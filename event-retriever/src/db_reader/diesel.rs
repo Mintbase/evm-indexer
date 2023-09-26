@@ -1,6 +1,8 @@
-use crate::db_reader::{models::Erc721Transfer, schema::erc721_transfer::dsl::*, DBClient};
+use crate::db_reader::{models::DbErc721Transfer, schema::erc721_transfer::dsl::*, DBClient};
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection};
+
+use super::models::Erc721Transfer;
 
 pub struct DieselClient {
     client: PgConnection,
@@ -14,7 +16,7 @@ impl DieselClient {
     }
 
     fn establish_connection(db_url: &str) -> Result<PgConnection> {
-        PgConnection::establish(&db_url).context("Error connecting to Diesel Client")
+        PgConnection::establish(db_url).context("Error connecting to Diesel Client")
     }
 }
 
@@ -23,9 +25,11 @@ impl DBClient for DieselClient {
         unimplemented!()
     }
     fn get_erc721_transfers_for_block(&mut self, block: i64) -> Result<Vec<Erc721Transfer>> {
-        Ok(erc721_transfer
+        let db_transfers: Vec<DbErc721Transfer> = erc721_transfer
             .filter(block_number.eq(&block))
-            .load::<Erc721Transfer>(&mut self.client)?)
+            .load(&mut self.client)?;
+        // Transform into ledgible transfers
+        Ok(db_transfers.into_iter().map(|t| t.into()).collect())
     }
 }
 
