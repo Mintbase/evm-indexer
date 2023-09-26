@@ -2,7 +2,7 @@ use crate::db_reader::{models::Erc721Transfer, schema::erc721_transfer::dsl::*, 
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection};
 
-struct DieselClient {
+pub struct DieselClient {
     client: PgConnection,
 }
 
@@ -19,7 +19,6 @@ impl DieselClient {
 }
 
 impl DBClient for DieselClient {
-
     fn get_finalized_block(&mut self) -> Result<i64> {
         unimplemented!()
     }
@@ -32,19 +31,15 @@ impl DBClient for DieselClient {
 
 #[cfg(test)]
 mod tests {
-    use crate::db_reader::DBClient;
     use crate::db_reader::diesel::DieselClient;
+    use crate::db_reader::DBClient;
 
     static TEST_DB_URL: &str = "postgresql://postgres:postgres@localhost:5432/postgres";
     #[test]
+    #[ignore]
     fn test_example() {
         let mut client = DieselClient::new(TEST_DB_URL).unwrap();
         let transfers = client.get_erc721_transfers_for_block(1001165).unwrap();
-        println!("{:?}", transfers.len());
-        for transfer in transfers {
-            println!("{:?}", transfer);
-        }
-        assert!(false);
-
+        assert!(!transfers.is_empty());
     }
 }
