@@ -31,9 +31,5 @@ jobs:
       - name: Lint
         run: cargo fmt --check && cargo clippy --all-targets --verbose
 
-#      - name: Run Test DB
-#        run: |
-#          docker run -e POSTGRES_PASSWORD=postgres -d -p 5432:5432 bh2smith/test-events:latest
-
       - name: Test
         run: cargo test --verbose
