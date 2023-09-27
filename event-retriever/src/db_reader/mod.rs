@@ -1,6 +1,6 @@
+use crate::db_reader::models::Erc721Transfer;
 use anyhow::Result;
 
-use self::models::Erc721Transfer;
 pub mod diesel;
 mod models;
 mod schema;
