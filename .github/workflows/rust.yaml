@@ -4,7 +4,6 @@ on:
   push:
     branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -13,10 +12,28 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: bh2smith/test-events:latest
+        env:
+          POSTGRES_PASSWORD: postgres
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
 
     steps:
       - uses: actions/checkout@v3
       - name: Lint
         run: cargo fmt --check && cargo clippy --all-targets --verbose
+
+#      - name: Run Test DB
+#        run: |
+#          docker run -e POSTGRES_PASSWORD=postgres -d -p 5432:5432 bh2smith/test-events:latest
+
       - name: Test
         run: cargo test --verbose
