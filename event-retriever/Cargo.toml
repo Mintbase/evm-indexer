@@ -9,4 +9,5 @@ edition = "2021"
 anyhow = "1.0.75"
 bigdecimal = { version = "0.3.1", features = ["serde"] }
 diesel = { version = "2.1.1", features = ["postgres", "numeric"] }
+dotenv = "0.15.0"
 ethers = "2.0.10"
