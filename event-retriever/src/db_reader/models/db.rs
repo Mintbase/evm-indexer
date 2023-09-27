@@ -7,15 +7,6 @@ use bigdecimal::BigDecimal;
 use diesel::{Queryable, Selectable};
 use ethers::types::{Address, U256};
 
-// #[derive(Queryable, Selectable)]
-// #[diesel(table_name = _event_block)]
-// #[diesel(check_for_backend(diesel::pg::Pg))]
-// pub(crate) struct EventBlock {
-//     event: String,
-//     indexed: i64,
-//     finalized: i64,
-// }
-
 #[derive(Queryable, Selectable)]
 #[diesel(table_name = approval_for_all)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -45,62 +36,6 @@ impl From<DbApprovalForAll> for ApprovalForAll {
         }
     }
 }
-
-// #[derive(Queryable, Selectable)]
-// #[diesel(table_name = erc1155_transfer_batch)]
-// #[diesel(check_for_backend(diesel::pg::Pg))]
-// pub(crate) struct DbErc1155TransferBatch {
-//     block_number: i64,
-//     log_index: i64,
-//     transaction_index: i64,
-//     address: Vec<u8>,
-//     operator_0: Option<Vec<u8>>,
-//     from_1: Option<Vec<u8>>,
-//     to_2: Option<Vec<u8>>,
-// }
-
-// impl From<DbErc1155TransferBatch> for Erc1155TransferBatch {
-//     fn from(val: DbErc1155TransferBatch) -> Self {
-//         Erc1155TransferBatch {
-//             base: EventBase::try_new(
-//                 val.block_number,
-//                 val.log_index,
-//                 val.transaction_index,
-//                 val.address,
-//             )
-//                 .expect("invalid input data"),
-//             owner: (),
-//             operator: (),
-//             from: (),
-//             to: (),
-//             ids: vec![],
-//             values: vec![],
-//         }
-//     }
-// }
-
-// #[derive(Queryable, Selectable)]
-// #[diesel(table_name = erc1155_transfer_batch_ids_0)]
-// #[diesel(check_for_backend(diesel::pg::Pg))]
-// pub(crate) struct DbErc1155TransferBatchIds {
-//     block_number: i64,
-//     log_index: i64,
-//     transaction_index: i64,
-//     address: Vec<u8>,
-//     array_index: i64,
-//     ids_0: Option<BigDecimal>,
-// }
-// #[derive(Queryable, Selectable)]
-// #[diesel(table_name = erc1155_transfer_batch_values_1)]
-// #[diesel(check_for_backend(diesel::pg::Pg))]
-// pub(crate) struct DbErc1155TransferBatchValues {
-//     block_number: i64,
-//     log_index: i64,
-//     transaction_index: i64,
-//     address: Vec<u8>,
-//     array_index: i64,
-//     values_0: Option<BigDecimal>,
-// }
 
 #[derive(Queryable, Selectable)]
 #[diesel(table_name = erc1155_transfer_single)]

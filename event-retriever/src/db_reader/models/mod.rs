@@ -78,13 +78,3 @@ pub struct Erc721Transfer {
     pub to: Address,
     pub token_id: U256,
 }
-
-// /// Our block query engine will output a sorted iterator of Events
-// pub enum Event {
-//     ApprovalForAll(ApprovalForAll),
-//     Erc1155TransferBatch(Erc1155TransferBatch),
-//     Erc1155TransferSingle(Erc1155TransferSingle),
-//     Erc1155Uri(Erc1155Uri),
-//     Erc721Approval(Erc721Approval),
-//     Erc721Transfer(Erc721Transfer),
-// }
