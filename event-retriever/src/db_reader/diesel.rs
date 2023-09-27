@@ -1,4 +1,8 @@
-use crate::db_reader::{models::DbErc721Transfer, schema::erc721_transfer::dsl::*, DBClient};
+use crate::db_reader::{
+    models::DbErc721Transfer,
+    schema::erc721_transfer::dsl::{block_number, erc721_transfer},
+    DBClient,
+};
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection};
 
@@ -24,12 +28,16 @@ impl DBClient for DieselClient {
     fn get_finalized_block(&mut self) -> Result<i64> {
         unimplemented!()
     }
-    fn get_erc721_transfers_for_block(&mut self, block: i64) -> Result<Vec<Erc721Transfer>> {
+    fn get_erc721_transfers_for_block(
+        &mut self,
+        block: i64,
+    ) -> Result<Box<dyn Iterator<Item = Erc721Transfer>>> {
         let db_transfers: Vec<DbErc721Transfer> = erc721_transfer
             .filter(block_number.eq(&block))
             .load(&mut self.client)?;
-        // Transform into ledgible transfers
-        Ok(db_transfers.into_iter().map(|t| t.into()).collect())
+        // Transform into legible transfers
+        let transfers = db_transfers.into_iter().map(|t| t.into());
+        Ok(Box::new(transfers))
     }
 }
 
