@@ -48,10 +48,9 @@ mod tests {
 
     static TEST_DB_URL: &str = "postgresql://postgres:postgres@localhost:5432/postgres";
     #[test]
-    #[ignore]
     fn test_example() {
         let mut client = DieselClient::new(TEST_DB_URL).unwrap();
         let transfers = client.get_erc721_transfers_for_block(1001165).unwrap();
-        assert!(!transfers.is_empty());
+        assert!(!transfers.collect::<Vec<_>>().is_empty());
     }
 }
