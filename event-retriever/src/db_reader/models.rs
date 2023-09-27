@@ -26,8 +26,6 @@ pub struct Erc721Transfer {
     pub contract_address: Address,
     pub from: Address,
     pub to: Address,
-    // Had to install bigdecimal with serde feature and fix version to 0.3.1
-    // https://docs.rs/bigdecimal/0.3.1/bigdecimal/index.html
     pub id: U256,
 }
 
