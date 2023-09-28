@@ -7,6 +7,19 @@ use bigdecimal::BigDecimal;
 use diesel::{Queryable, Selectable};
 use ethers::types::{Address, U256};
 
+#[macro_export]
+macro_rules! event_base {
+    ($val:tt) => {
+        EventBase::try_new(
+            $val.block_number,
+            $val.log_index,
+            $val.transaction_index,
+            $val.address,
+        )
+        .expect("invalid input")
+    };
+}
+
 #[derive(Queryable, Selectable)]
 #[diesel(table_name = approval_for_all)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -23,13 +36,7 @@ pub(crate) struct DbApprovalForAll {
 impl From<DbApprovalForAll> for ApprovalForAll {
     fn from(val: DbApprovalForAll) -> Self {
         ApprovalForAll {
-            base: EventBase::try_new(
-                val.block_number,
-                val.log_index,
-                val.transaction_index,
-                val.address,
-            )
-            .expect("invalid input data"),
+            base: event_base!(val),
             owner: Address::from_slice(val.owner_0.expect("unexpected Null").as_slice()),
             operator: Address::from_slice(val.operator_1.expect("unexpected Null").as_slice()),
             approved: val.approved_2.expect("unexpected None"),
@@ -55,13 +62,7 @@ pub(crate) struct DbErc1155TransferSingle {
 impl From<DbErc1155TransferSingle> for Erc1155TransferSingle {
     fn from(val: DbErc1155TransferSingle) -> Self {
         Erc1155TransferSingle {
-            base: EventBase::try_new(
-                val.block_number,
-                val.log_index,
-                val.transaction_index,
-                val.address,
-            )
-            .expect("invalid input data"),
+            base: event_base!(val),
             operator: Address::from_slice(val.operator_0.expect("unexpected Null").as_slice()),
             from: Address::from_slice(val.from_1.expect("unexpected Null").as_slice()),
             to: Address::from_slice(val.to_2.expect("unexpected Null").as_slice()),
@@ -88,13 +89,7 @@ pub(crate) struct DbErc1155Uri {
 impl From<DbErc1155Uri> for Erc1155Uri {
     fn from(val: DbErc1155Uri) -> Self {
         Erc1155Uri {
-            base: EventBase::try_new(
-                val.block_number,
-                val.log_index,
-                val.transaction_index,
-                val.address,
-            )
-            .expect("invalid input data"),
+            base: event_base!(val),
             id: U256::from_dec_str(&val.id_1.expect("Null id_1").to_string())
                 .expect("Invalid value"),
             value: val.value_0.expect("Null value_0"),
@@ -118,13 +113,7 @@ pub(crate) struct DbErc721Approval {
 impl From<DbErc721Approval> for Erc721Approval {
     fn from(val: DbErc721Approval) -> Self {
         Erc721Approval {
-            base: EventBase::try_new(
-                val.block_number,
-                val.log_index,
-                val.transaction_index,
-                val.address,
-            )
-            .expect("invalid input data"),
+            base: event_base!(val),
             owner: Address::from_slice(val.owner_0.expect("unexpected Null").as_slice()),
             approved: Address::from_slice(val.approved_1.expect("unexpected Null").as_slice()),
             id: U256::from_dec_str(&val.tokenid_2.expect("Null tokenid_2").to_string())
@@ -151,13 +140,7 @@ pub(crate) struct DbErc721Transfer {
 impl From<DbErc721Transfer> for Erc721Transfer {
     fn from(val: DbErc721Transfer) -> Self {
         Erc721Transfer {
-            base: EventBase::try_new(
-                val.block_number,
-                val.log_index,
-                val.transaction_index,
-                val.address,
-            )
-            .expect("invalid input data"),
+            base: event_base!(val),
             from: Address::from_slice(val.from_0.expect("Null from_0").as_slice()),
             to: Address::from_slice(val.to_1.expect("Null to_1").as_slice()),
             token_id: U256::from_dec_str(&val.tokenid_2.expect("Null token_id2").to_string())
@@ -170,37 +153,127 @@ impl From<DbErc721Transfer> for Erc721Transfer {
 mod tests {
 
     use super::*;
-    use std::str::FromStr;
+
+    fn n_addresses(n: u64) -> Vec<Address> {
+        (0..n).map(|i| Address::from_low_u64_be(i)).collect()
+    }
+    #[test]
+    fn approval_for_all_from_db() {
+        let addresses = n_addresses(3);
+        assert_eq!(
+            ApprovalForAll::from(DbApprovalForAll {
+                block_number: 1,
+                log_index: 2,
+                transaction_index: 3,
+                address: addresses[0].as_fixed_bytes().to_vec(),
+                owner_0: Some(addresses[1].as_fixed_bytes().to_vec()),
+                operator_1: Some(addresses[2].as_fixed_bytes().to_vec()),
+                approved_2: Some(true),
+            }),
+            ApprovalForAll {
+                base: EventBase {
+                    block_number: 1,
+                    log_index: 2,
+                    transaction_index: 3,
+                    contract_address: addresses[0],
+                },
+                owner: addresses[1],
+                operator: addresses[2],
+                approved: true,
+            }
+        )
+    }
 
     #[test]
-    fn transfer_model_into() {
-        let db_transfer = DbErc721Transfer {
-            block_number: 1,
-            log_index: 2,
-            transaction_index: 3,
-            address: [0u8; 20].to_vec(),
-            from_0: Some([1u8; 20].to_vec()),
-            to_1: Some([2u8; 20].to_vec()),
-            tokenid_2: BigDecimal::parse_bytes(b"10", 10),
-        };
-
-        let transfer: Erc721Transfer = db_transfer.into();
+    fn approval_from_db() {
+        let addresses = n_addresses(3);
         assert_eq!(
-            transfer,
+            Erc721Approval::from(DbErc721Approval {
+                block_number: 1,
+                log_index: 2,
+                transaction_index: 3,
+                address: addresses[0].as_fixed_bytes().to_vec(),
+                owner_0: Some(addresses[1].as_fixed_bytes().to_vec()),
+                approved_1: Some(false),
+                tokenid_2: None,
+            }),
+            Erc721Approval {
+                base: EventBase {
+                    block_number: 1,
+                    log_index: 2,
+                    transaction_index: 3,
+                    contract_address: addresses[0],
+                },
+                owner: addresses[1],
+                approved: true,
+                id: (),
+            }
+        )
+    }
+
+    #[test]
+    fn erc721_transfer_from_db() {
+        let addresses = n_addresses(3);
+        assert_eq!(
+            Erc721Transfer::from(DbErc721Transfer {
+                block_number: 1,
+                log_index: 2,
+                transaction_index: 3,
+                address: addresses[0].as_fixed_bytes().to_vec(),
+                from_0: Some(addresses[1].as_fixed_bytes().to_vec()),
+                to_1: Some(addresses[2].as_fixed_bytes().to_vec()),
+                tokenid_2: BigDecimal::parse_bytes(b"10", 10),
+            }),
             Erc721Transfer {
                 base: EventBase {
                     block_number: 1,
                     log_index: 2,
                     transaction_index: 3,
-                    contract_address: Address::from_str(
-                        "0x0000000000000000000000000000000000000000"
-                    )
-                    .unwrap(),
+                    contract_address: addresses[0],
                 },
-                from: Address::from_str("0x0101010101010101010101010101010101010101").unwrap(),
-                to: Address::from_str("0x0202020202020202020202020202020202020202").unwrap(),
+                from: addresses[1],
+                to: addresses[2],
                 token_id: U256::from(10)
             }
         )
+    }
+
+    struct Test {
+        block_number: i64,
+        log_index: i64,
+        transaction_index: i64,
+        address: Vec<u8>,
+    }
+
+    #[test]
+    fn event_base_marco() {
+        let x = Test {
+            block_number: 0,
+            log_index: 0,
+            transaction_index: 0,
+            address: vec![0; 20],
+        };
+
+        assert_eq!(
+            event_base!(x),
+            EventBase {
+                block_number: 0,
+                log_index: 0,
+                transaction_index: 0,
+                contract_address: Address::zero()
+            }
+        )
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_panic() {
+        let x = Test {
+            block_number: -1,
+            log_index: 0,
+            transaction_index: 0,
+            address: vec![0; 20],
+        };
+        event_base!(x);
     }
 }
