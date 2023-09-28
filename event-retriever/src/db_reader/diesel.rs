@@ -1,12 +1,12 @@
+use crate::db_reader::models::db::DbApprovalForAll;
+use crate::db_reader::models::ApprovalForAll;
+use crate::db_reader::schema::approval_for_all::dsl::approval_for_all;
 use crate::db_reader::{
     models::{db::DbErc721Transfer, Erc721Transfer},
     schema::erc721_transfer::dsl::{block_number, erc721_transfer},
 };
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection};
-use crate::db_reader::models::ApprovalForAll;
-use crate::db_reader::models::db::DbApprovalForAll;
-use crate::db_reader::schema::approval_for_all::dsl::approval_for_all;
 
 pub struct DieselClient {
     client: PgConnection,
