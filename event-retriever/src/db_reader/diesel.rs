@@ -1,10 +1,12 @@
 use crate::db_reader::{
     models::{db::DbErc721Transfer, Erc721Transfer},
     schema::erc721_transfer::dsl::{block_number, erc721_transfer},
-    DBClient,
 };
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection};
+use crate::db_reader::models::ApprovalForAll;
+use crate::db_reader::models::db::DbApprovalForAll;
+use crate::db_reader::schema::approval_for_all::dsl::approval_for_all;
 
 pub struct DieselClient {
     client: PgConnection,
@@ -20,29 +22,24 @@ impl DieselClient {
     fn establish_connection(db_url: &str) -> Result<PgConnection> {
         PgConnection::establish(db_url).context("Error connecting to Diesel Client")
     }
-}
 
-impl DBClient for DieselClient {
-    fn get_finalized_block(&mut self) -> Result<i64> {
-        unimplemented!()
-    }
-    fn get_erc721_transfers_for_block(
+    // fn get_finalized_block(&mut self) -> Result<i64> {
+    //     unimplemented!()
+    // }
+    pub fn get_erc721_transfers_for_block(
         &mut self,
         block: i64,
-    ) -> Result<Box<dyn Iterator<Item = Erc721Transfer>>> {
+    ) -> Result<impl Iterator<Item = Erc721Transfer>> {
         let db_transfers: Vec<DbErc721Transfer> = erc721_transfer
             .filter(block_number.eq(&block))
             .load(&mut self.client)?;
-        // Transform into legible transfers
-        let transfers = db_transfers.into_iter().map(|t| t.into());
-        Ok(Box::new(transfers))
+        Ok(db_transfers.into_iter().map(|t| t.into()))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::db_reader::diesel::DieselClient;
-    use crate::db_reader::DBClient;
 
     static TEST_DB_URL: &str = "postgresql://postgres:postgres@localhost:5432/postgres";
     #[test]
