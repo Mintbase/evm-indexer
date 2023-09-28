@@ -151,11 +151,10 @@ impl From<DbErc721Transfer> for Erc721Transfer {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     fn n_addresses(n: u64) -> Vec<Address> {
-        (0..n).map(|i| Address::from_low_u64_be(i)).collect()
+        (0..n).map(Address::from_low_u64_be).collect()
     }
     #[test]
     fn approval_for_all_from_db() {
@@ -183,7 +182,64 @@ mod tests {
             }
         )
     }
-
+    #[test]
+    fn erc1155_transfer_single_from_db() {
+        let addresses = n_addresses(4);
+        let id = 49;
+        let value = 77;
+        assert_eq!(
+            Erc1155TransferSingle::from(DbErc1155TransferSingle {
+                block_number: 1,
+                log_index: 2,
+                transaction_index: 3,
+                address: addresses[0].as_fixed_bytes().to_vec(),
+                operator_0: Some(addresses[1].as_fixed_bytes().to_vec()),
+                from_1: Some(addresses[2].as_fixed_bytes().to_vec()),
+                to_2: Some(addresses[3].as_fixed_bytes().to_vec()),
+                id_3: Some(BigDecimal::try_from(id).unwrap()),
+                value_4: Some(BigDecimal::try_from(value).unwrap()),
+            }),
+            Erc1155TransferSingle {
+                base: EventBase {
+                    block_number: 1,
+                    log_index: 2,
+                    transaction_index: 3,
+                    contract_address: addresses[0],
+                },
+                operator: addresses[1],
+                from: addresses[2],
+                value: U256::from(value),
+                id: U256::from(id),
+                to: addresses[3],
+            }
+        )
+    }
+    #[test]
+    fn erc1155_uri_from_db() {
+        let addresses = n_addresses(3);
+        let value = "TokenUri".to_string();
+        let id = 49;
+        assert_eq!(
+            Erc1155Uri::from(DbErc1155Uri {
+                block_number: 1,
+                log_index: 2,
+                transaction_index: 3,
+                address: addresses[0].as_fixed_bytes().to_vec(),
+                value_0: Some(value.clone()),
+                id_1: Some(BigDecimal::try_from(id).unwrap())
+            }),
+            Erc1155Uri {
+                base: EventBase {
+                    block_number: 1,
+                    log_index: 2,
+                    transaction_index: 3,
+                    contract_address: addresses[0],
+                },
+                value,
+                id: U256::from(id),
+            }
+        )
+    }
     #[test]
     fn approval_from_db() {
         let addresses = n_addresses(3);
@@ -194,8 +250,8 @@ mod tests {
                 transaction_index: 3,
                 address: addresses[0].as_fixed_bytes().to_vec(),
                 owner_0: Some(addresses[1].as_fixed_bytes().to_vec()),
-                approved_1: Some(false),
-                tokenid_2: None,
+                approved_1: Some(addresses[2].as_fixed_bytes().to_vec()),
+                tokenid_2: Some(BigDecimal::parse_bytes(b"49", 10).unwrap()),
             }),
             Erc721Approval {
                 base: EventBase {
@@ -205,8 +261,8 @@ mod tests {
                     contract_address: addresses[0],
                 },
                 owner: addresses[1],
-                approved: true,
-                id: (),
+                approved: addresses[2],
+                id: U256::from(49),
             }
         )
     }

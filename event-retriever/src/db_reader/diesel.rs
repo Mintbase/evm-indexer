@@ -1,7 +1,7 @@
 use crate::db_reader::{
-    models::db::DbErc721Transfer,
+    models::{db::DbErc721Transfer, Erc721Transfer},
     schema::erc721_transfer::dsl::{block_number, erc721_transfer},
-    DBClient, Erc721Transfer,
+    DBClient,
 };
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection};
