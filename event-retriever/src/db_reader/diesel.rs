@@ -1,12 +1,10 @@
 use crate::db_reader::{
-    models::DbErc721Transfer,
+    models::{db::DbErc721Transfer, Erc721Transfer},
     schema::erc721_transfer::dsl::{block_number, erc721_transfer},
     DBClient,
 };
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection};
-
-use super::models::Erc721Transfer;
 
 pub struct DieselClient {
     client: PgConnection,
