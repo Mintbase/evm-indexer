@@ -128,6 +128,9 @@ mod tests {
         DieselClient::new(TEST_DB_URL).unwrap()
     }
 
+    fn address(val: &str) -> Address {
+        Address::from_str(val).unwrap()
+    }
     #[test]
     fn approvals_for_all() {
         // select block_number, count(*) cnt
@@ -169,39 +172,84 @@ mod tests {
     }
 
     #[test]
-    fn test_join() {
+    fn erc1155_batch_transfers() {
+        // These logs are emitted over two transactions:
+        // 0x932760ea5c8afe404247918817737699c8a85947e8fd883379b4d469d6399bde
+        // 0x0d5333fc99ca227a2126c8d0ff3193ba1c619fbeaeb330098dc705e646890ca1
+        // Check them out on https://etherscan.io
+
         let mut client = DieselClient::new(TEST_DB_URL).unwrap();
         let batch_transfers: Vec<_> = client
-            .get_erc1155_transfers_batch_for_block(&10000246)
+            .get_erc1155_transfers_batch_for_block(&10086624)
             .unwrap()
             .collect();
 
-        assert_eq!(
-            batch_transfers,
-            vec![Erc1155TransferBatch {
+        let expected = [
+            Erc1155TransferBatch {
                 base: EventBase {
-                    block_number: 10000246,
-                    log_index: 101,
-                    transaction_index: 88,
-                    contract_address: Address::from_str(
-                        "0xfaafdc07907ff5120a76b34b731b278c38d6043c"
-                    )
-                    .unwrap()
+                    block_number: 10086624,
+                    log_index: 137,
+                    transaction_index: 81,
+                    contract_address: address("0xffb8bb08aed493fa0814fe4cca300836a29cda33"),
                 },
-                operator: Address::from_str("0x913c7fa57e6690f96b4aeb65553f0ed3664caf8b").unwrap(),
-                from: Address::from_str("0x913c7fa57e6690f96b4aeb65553f0ed3664caf8b").unwrap(),
-                to: Address::from_str("0x0544fbed9b72aa036517b21d1db50201a17d09ce").unwrap(),
+                operator: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
+                from: address("0x0000000000000000000000000000000000000000"),
+                to: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
                 ids: [
-                    "50885195465617476136641626189999439165077792154310195491295815731572381843464",
-                    "50885195465617476142918727925386119928913581577517861907398171176036416356391",
-                    "50885195465617476149195829660772800692749371000725528323500526620500450869273",
-                    "50885195465617476124087422719226077637406213307894862659091104842644312817683",
-                    "50885195465617476130364524454612758401242002731102529075193460287108347330610",
+                    "46781181410086087605121326430179017800901876837323210329325266864881489549285",
+                    "35633793719885825044527715166617634530632869619605299797527323660719540928159",
+                    "21093830714357625331788682464197645861493957548368273976921276582172066321941",
                 ]
                 .map(|t| U256::from_dec_str(t).unwrap())
                 .to_vec(),
-                values: [1; 5].map(U256::from).to_vec()
-            }]
-        )
+                values: ["1000000", "1000000", "1000000"]
+                    .map(|t| U256::from_dec_str(t).unwrap())
+                    .to_vec(),
+            },
+            Erc1155TransferBatch {
+                base: EventBase {
+                    block_number: 10086624,
+                    log_index: 140,
+                    transaction_index: 81,
+                    contract_address: address("0xffb8bb08aed493fa0814fe4cca300836a29cda33"),
+                },
+                operator: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
+                from: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
+                to: address("0x90e5e2d3f5b7d71179e371ae2783c08bc77c056d"),
+                ids: [
+                    "46781181410086087605121326430179017800901876837323210329325266864881489549285",
+                    "35633793719885825044527715166617634530632869619605299797527323660719540928159",
+                    "21093830714357625331788682464197645861493957548368273976921276582172066321941",
+                ]
+                .map(|t| U256::from_dec_str(t).unwrap())
+                .to_vec(),
+                values: ["612982", "72241", "0"]
+                    .map(|t| U256::from_dec_str(t).unwrap())
+                    .to_vec(),
+            },
+            Erc1155TransferBatch {
+                base: EventBase {
+                    block_number: 10086624,
+                    log_index: 145,
+                    transaction_index: 82,
+                    contract_address: address("0xffb8bb08aed493fa0814fe4cca300836a29cda33"),
+                },
+                operator: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
+                from: address("0x0000000000000000000000000000000000000000"),
+                to: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
+                ids: [
+                    "46781181410086087605121326430179017800901876837323210329325266864881489549285",
+                    "35633793719885825044527715166617634530632869619605299797527323660719540928159",
+                    "21093830714357625331788682464197645861493957548368273976921276582172066321941",
+                ]
+                .map(|t| U256::from_dec_str(t).unwrap())
+                .to_vec(),
+                values: ["980000", "980000", "980000"]
+                    .map(|t| U256::from_dec_str(t).unwrap())
+                    .to_vec(),
+            },
+        ];
+
+        assert_eq!(batch_transfers, expected)
     }
 }
