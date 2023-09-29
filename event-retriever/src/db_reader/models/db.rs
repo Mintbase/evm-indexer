@@ -229,11 +229,11 @@ mod tests {
                 log_index: 2,
                 transaction_index: 3,
                 address: addresses[0].as_fixed_bytes().to_vec(),
-                operator: vec![],
-                from: vec![],
-                to: vec![],
-                ids: vec![],
-                values: vec![],
+                operator: addresses[1].as_fixed_bytes().to_vec(),
+                from: addresses[2].as_fixed_bytes().to_vec(),
+                to: addresses[3].as_fixed_bytes().to_vec(),
+                ids: vec![BigDecimal::try_from(1).unwrap()],
+                values: vec![BigDecimal::try_from(2).unwrap()],
             }),
             Erc1155TransferBatch {
                 base: EventBase {
@@ -245,8 +245,8 @@ mod tests {
                 operator: addresses[1],
                 from: addresses[2],
                 to: addresses[3],
-                ids: vec![],
-                values: vec![],
+                ids: vec![U256::from(1)],
+                values: vec![U256::from(2)],
             }
         )
     }
