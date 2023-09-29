@@ -1,6 +1,8 @@
-use crate::db_reader::models::{Erc1155TransferSingle, Erc1155Uri, Erc721Approval};
 use crate::db_reader::{
-    models::{ApprovalForAll, Erc721Transfer, EventBase},
+    models::{
+        ApprovalForAll, Erc1155TransferSingle, Erc1155Uri, Erc721Approval, Erc721Transfer,
+        EventBase,
+    },
     schema::*,
 };
 use bigdecimal::BigDecimal;
