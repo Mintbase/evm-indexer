@@ -1,12 +1,12 @@
 use crate::db_reader::{
     models::{
-        ApprovalForAll, Erc1155TransferSingle, Erc1155Uri, Erc721Approval, Erc721Transfer,
-        EventBase,
+        conversions::u256_from_big_decimal, ApprovalForAll, Erc1155TransferBatch,
+        Erc1155TransferSingle, Erc1155Uri, Erc721Approval, Erc721Transfer, EventBase,
     },
     schema::*,
 };
 use bigdecimal::BigDecimal;
-use diesel::{Queryable, Selectable};
+use diesel::{Queryable, QueryableByName, Selectable};
 use ethers::types::{Address, U256};
 
 #[macro_export]
@@ -42,6 +42,40 @@ impl From<DbApprovalForAll> for ApprovalForAll {
             owner: Address::from_slice(val.owner_0.expect("unexpected Null").as_slice()),
             operator: Address::from_slice(val.operator_1.expect("unexpected Null").as_slice()),
             approved: val.approved_2.expect("unexpected None"),
+        }
+    }
+}
+#[derive(Queryable, QueryableByName, Debug)]
+pub(crate) struct DbErc1155TransferBatch {
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    block_number: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    log_index: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    transaction_index: i64,
+    #[diesel(sql_type = diesel::sql_types::Bytea)]
+    address: Vec<u8>,
+    #[diesel(sql_type = diesel::sql_types::Bytea)]
+    operator: Vec<u8>,
+    #[diesel(sql_type = diesel::sql_types::Bytea)]
+    from: Vec<u8>,
+    #[diesel(sql_type = diesel::sql_types::Bytea)]
+    to: Vec<u8>,
+    #[diesel(sql_type = diesel::sql_types::Array<diesel::sql_types::Numeric>)]
+    ids: Vec<BigDecimal>,
+    #[diesel(sql_type = diesel::sql_types::Array<diesel::sql_types::Numeric>)]
+    values: Vec<BigDecimal>,
+}
+
+impl From<DbErc1155TransferBatch> for Erc1155TransferBatch {
+    fn from(val: DbErc1155TransferBatch) -> Self {
+        Erc1155TransferBatch {
+            base: event_base!(val),
+            operator: Address::from_slice(val.operator.as_slice()),
+            from: Address::from_slice(val.from.as_slice()),
+            to: Address::from_slice(val.to.as_slice()),
+            ids: val.ids.iter().map(u256_from_big_decimal).collect(),
+            values: val.values.iter().map(u256_from_big_decimal).collect(),
         }
     }
 }
@@ -184,6 +218,38 @@ mod tests {
             }
         )
     }
+
+    #[test]
+    fn erc1155_transfer_batch_from_db() {
+        let addresses = n_addresses(4);
+        assert_eq!(
+            Erc1155TransferBatch::from(DbErc1155TransferBatch {
+                block_number: 1,
+                log_index: 2,
+                transaction_index: 3,
+                address: addresses[0].as_fixed_bytes().to_vec(),
+                operator: addresses[1].as_fixed_bytes().to_vec(),
+                from: addresses[2].as_fixed_bytes().to_vec(),
+                to: addresses[3].as_fixed_bytes().to_vec(),
+                ids: vec![BigDecimal::try_from(1).unwrap()],
+                values: vec![BigDecimal::try_from(2).unwrap()],
+            }),
+            Erc1155TransferBatch {
+                base: EventBase {
+                    block_number: 1,
+                    log_index: 2,
+                    transaction_index: 3,
+                    contract_address: addresses[0],
+                },
+                operator: addresses[1],
+                from: addresses[2],
+                to: addresses[3],
+                ids: vec![U256::from(1)],
+                values: vec![U256::from(2)],
+            }
+        )
+    }
+
     #[test]
     fn erc1155_transfer_single_from_db() {
         let addresses = n_addresses(4);

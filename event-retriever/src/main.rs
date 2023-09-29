@@ -15,4 +15,9 @@ fn main() {
     for t in transfers {
         println!("{:?}", t);
     }
+
+    let _batch_transfers: Vec<_> = pg_client
+        .get_erc1155_transfers_batch_for_block(&10_000_246)
+        .unwrap()
+        .collect();
 }
