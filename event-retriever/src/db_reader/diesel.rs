@@ -20,9 +20,6 @@ impl DieselClient {
         PgConnection::establish(db_url).context("Error connecting to Diesel Client")
     }
 
-    // fn get_finalized_block(&mut self) -> Result<i64> {
-    //     unimplemented!()
-    // }
     pub fn get_erc721_transfers_for_block(
         &mut self,
         block: i64,
