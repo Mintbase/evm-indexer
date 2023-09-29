@@ -1,4 +1,4 @@
-use crate::db_reader::{diesel::DieselClient, DBClient};
+use crate::db_reader::diesel::DieselClient;
 use dotenv::dotenv;
 pub mod db_reader;
 
