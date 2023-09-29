@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use ethers::types::{Address, U256};
+mod conversions;
 pub(crate) mod db;
 
 /// Every Ethereum Event emits these properties
@@ -46,7 +47,6 @@ pub struct ApprovalForAll {
 #[derive(Debug, PartialEq)]
 pub struct Erc1155TransferBatch {
     pub base: EventBase,
-    pub owner: Address,
     pub operator: Address,
     pub from: Address,
     pub to: Address,
