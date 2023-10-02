@@ -9,17 +9,20 @@ use bigdecimal::BigDecimal;
 use diesel::{Queryable, QueryableByName, Selectable};
 use ethers::types::{Address, U256};
 
-#[macro_export]
-macro_rules! event_base {
-    ($val:tt) => {
-        EventBase::try_new(
-            $val.block_number,
-            $val.log_index,
-            $val.transaction_index,
-            $val.address,
-        )
-        .expect("invalid input")
-    };
+pub trait EvmEventTable {
+    fn block_number(&self) -> u64;
+    fn log_index(&self) -> u64;
+    fn transaction_index(&self) -> u64;
+    fn address(&self) -> Address;
+
+    fn event_base(&self) -> EventBase {
+        EventBase {
+            block_number: self.block_number(),
+            log_index: self.log_index(),
+            transaction_index: self.transaction_index(),
+            contract_address: self.address(),
+        }
+    }
 }
 
 #[derive(Queryable, Selectable)]
@@ -38,7 +41,6 @@ pub(crate) struct DbApprovalForAll {
 impl From<DbApprovalForAll> for ApprovalForAll {
     fn from(val: DbApprovalForAll) -> Self {
         ApprovalForAll {
-            base: event_base!(val),
             owner: Address::from_slice(val.owner_0.expect("unexpected Null").as_slice()),
             operator: Address::from_slice(val.operator_1.expect("unexpected Null").as_slice()),
             approved: val.approved_2.expect("unexpected None"),
@@ -66,11 +68,9 @@ pub(crate) struct DbErc1155TransferBatch {
     #[diesel(sql_type = diesel::sql_types::Array<diesel::sql_types::Numeric>)]
     values: Vec<BigDecimal>,
 }
-
 impl From<DbErc1155TransferBatch> for Erc1155TransferBatch {
     fn from(val: DbErc1155TransferBatch) -> Self {
         Erc1155TransferBatch {
-            base: event_base!(val),
             operator: Address::from_slice(val.operator.as_slice()),
             from: Address::from_slice(val.from.as_slice()),
             to: Address::from_slice(val.to.as_slice()),
@@ -98,7 +98,6 @@ pub(crate) struct DbErc1155TransferSingle {
 impl From<DbErc1155TransferSingle> for Erc1155TransferSingle {
     fn from(val: DbErc1155TransferSingle) -> Self {
         Erc1155TransferSingle {
-            base: event_base!(val),
             operator: Address::from_slice(val.operator_0.expect("unexpected Null").as_slice()),
             from: Address::from_slice(val.from_1.expect("unexpected Null").as_slice()),
             to: Address::from_slice(val.to_2.expect("unexpected Null").as_slice()),
@@ -125,7 +124,6 @@ pub(crate) struct DbErc1155Uri {
 impl From<DbErc1155Uri> for Erc1155Uri {
     fn from(val: DbErc1155Uri) -> Self {
         Erc1155Uri {
-            base: event_base!(val),
             id: U256::from_dec_str(&val.id_1.expect("Null id_1").to_string())
                 .expect("Invalid value"),
             value: val.value_0.expect("Null value_0"),
@@ -149,7 +147,6 @@ pub(crate) struct DbErc721Approval {
 impl From<DbErc721Approval> for Erc721Approval {
     fn from(val: DbErc721Approval) -> Self {
         Erc721Approval {
-            base: event_base!(val),
             owner: Address::from_slice(val.owner_0.expect("unexpected Null").as_slice()),
             approved: Address::from_slice(val.approved_1.expect("unexpected Null").as_slice()),
             id: U256::from_dec_str(&val.tokenid_2.expect("Null tokenid_2").to_string())
@@ -176,7 +173,6 @@ pub(crate) struct DbErc721Transfer {
 impl From<DbErc721Transfer> for Erc721Transfer {
     fn from(val: DbErc721Transfer) -> Self {
         Erc721Transfer {
-            base: event_base!(val),
             from: Address::from_slice(val.from_0.expect("Null from_0").as_slice()),
             to: Address::from_slice(val.to_1.expect("Null to_1").as_slice()),
             token_id: U256::from_dec_str(&val.tokenid_2.expect("Null token_id2").to_string())
@@ -185,9 +181,44 @@ impl From<DbErc721Transfer> for Erc721Transfer {
     }
 }
 
+macro_rules! impl_evm_event_table {
+    ($x:ident) => {
+        impl EvmEventTable for $x {
+            fn block_number(&self) -> u64 {
+                self.block_number.try_into().expect("negative block_number")
+            }
+            fn log_index(&self) -> u64 {
+                self.log_index.try_into().expect("negative log_index")
+            }
+            fn transaction_index(&self) -> u64 {
+                self.transaction_index
+                    .try_into()
+                    .expect("negative transaction_index")
+            }
+            fn address(&self) -> Address {
+                if self.address.len() != 20 {
+                    panic!(
+                        "Invalid Address bytes: {:?} - must have length 20",
+                        self.address
+                    );
+                }
+                Address::from_slice(self.address.as_slice())
+            }
+        }
+    };
+}
+
+impl_evm_event_table!(DbApprovalForAll);
+impl_evm_event_table!(DbErc1155TransferBatch);
+impl_evm_event_table!(DbErc1155TransferSingle);
+impl_evm_event_table!(DbErc1155Uri);
+impl_evm_event_table!(DbErc721Approval);
+impl_evm_event_table!(DbErc721Transfer);
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::panic;
 
     fn n_addresses(n: u64) -> Vec<Address> {
         (0..n).map(Address::from_low_u64_be).collect()
@@ -206,12 +237,6 @@ mod tests {
                 approved_2: Some(true),
             }),
             ApprovalForAll {
-                base: EventBase {
-                    block_number: 1,
-                    log_index: 2,
-                    transaction_index: 3,
-                    contract_address: addresses[0],
-                },
                 owner: addresses[1],
                 operator: addresses[2],
                 approved: true,
@@ -235,12 +260,6 @@ mod tests {
                 values: vec![BigDecimal::try_from(2).unwrap()],
             }),
             Erc1155TransferBatch {
-                base: EventBase {
-                    block_number: 1,
-                    log_index: 2,
-                    transaction_index: 3,
-                    contract_address: addresses[0],
-                },
                 operator: addresses[1],
                 from: addresses[2],
                 to: addresses[3],
@@ -268,12 +287,6 @@ mod tests {
                 value_4: Some(BigDecimal::try_from(value).unwrap()),
             }),
             Erc1155TransferSingle {
-                base: EventBase {
-                    block_number: 1,
-                    log_index: 2,
-                    transaction_index: 3,
-                    contract_address: addresses[0],
-                },
                 operator: addresses[1],
                 from: addresses[2],
                 value: U256::from(value),
@@ -297,12 +310,6 @@ mod tests {
                 id_1: Some(BigDecimal::try_from(id).unwrap())
             }),
             Erc1155Uri {
-                base: EventBase {
-                    block_number: 1,
-                    log_index: 2,
-                    transaction_index: 3,
-                    contract_address: addresses[0],
-                },
                 value,
                 id: U256::from(id),
             }
@@ -322,12 +329,6 @@ mod tests {
                 tokenid_2: Some(BigDecimal::parse_bytes(b"49", 10).unwrap()),
             }),
             Erc721Approval {
-                base: EventBase {
-                    block_number: 1,
-                    log_index: 2,
-                    transaction_index: 3,
-                    contract_address: addresses[0],
-                },
                 owner: addresses[1],
                 approved: addresses[2],
                 id: U256::from(49),
@@ -349,12 +350,6 @@ mod tests {
                 tokenid_2: BigDecimal::parse_bytes(b"10", 10),
             }),
             Erc721Transfer {
-                base: EventBase {
-                    block_number: 1,
-                    log_index: 2,
-                    transaction_index: 3,
-                    contract_address: addresses[0],
-                },
                 from: addresses[1],
                 to: addresses[2],
                 token_id: U256::from(10)
@@ -362,42 +357,58 @@ mod tests {
         )
     }
 
-    struct Test {
+    struct TestStruct {
         block_number: i64,
         log_index: i64,
         transaction_index: i64,
         address: Vec<u8>,
     }
+    impl_evm_event_table!(TestStruct);
 
     #[test]
-    fn event_base_marco() {
-        let x = Test {
-            block_number: 0,
-            log_index: 0,
-            transaction_index: 0,
-            address: vec![0; 20],
-        };
+    fn test_impl_evm_event_base_panics() {
+        assert!(panic::catch_unwind(|| {
+            TestStruct {
+                block_number: -1, // Bad Value!
+                log_index: 0,
+                transaction_index: 0,
+                address: vec![0; 20],
+            }
+            .event_base();
+        })
+        .is_err());
 
-        assert_eq!(
-            event_base!(x),
-            EventBase {
+        assert!(panic::catch_unwind(|| {
+            TestStruct {
+                block_number: 0,
+                log_index: -1, // Bad Value!
+                transaction_index: 0,
+                address: vec![0; 20],
+            }
+            .event_base();
+        })
+        .is_err());
+
+        assert!(panic::catch_unwind(|| {
+            TestStruct {
+                block_number: 0,
+                log_index: 0,
+                transaction_index: -1, // Bad Value!
+                address: vec![0; 20],
+            }
+            .event_base();
+        })
+        .is_err());
+
+        assert!(panic::catch_unwind(|| {
+            TestStruct {
                 block_number: 0,
                 log_index: 0,
                 transaction_index: 0,
-                contract_address: Address::zero()
+                address: vec![1u8, 2u8], // Bad Value!
             }
-        )
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_panic() {
-        let x = Test {
-            block_number: -1,
-            log_index: 0,
-            transaction_index: 0,
-            address: vec![0; 20],
-        };
-        event_base!(x);
+            .event_base();
+        })
+        .is_err());
     }
 }
