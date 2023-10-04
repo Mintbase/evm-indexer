@@ -1,12 +1,10 @@
-use crate::db_reader::models::db::EvmEventTable;
-use crate::db_reader::models::EventMeta;
 use crate::db_reader::{
     models::{
         db::{
             DbApprovalForAll, DbErc1155TransferBatch, DbErc1155TransferSingle, DbErc1155Uri,
-            DbErc721Approval, DbErc721Transfer,
+            DbErc721Approval, DbErc721Transfer, EvmEventTable,
         },
-        NftEvent,
+        merge_sorted_iters, EventMeta, NftEvent,
     },
     schema::{
         self, approval_for_all::dsl::approval_for_all,
@@ -31,7 +29,20 @@ impl DieselClient {
     fn establish_connection(db_url: &str) -> Result<PgConnection> {
         PgConnection::establish(db_url).context("Error connecting to Diesel Client")
     }
-    pub fn get_approvals_for_all_for_block(
+
+    pub fn get_events_for_block(&mut self, block: i64) -> Result<Vec<NftEvent>> {
+        let events = vec![
+            Box::new(self.get_approvals_for_all_for_block(block)?)
+                as Box<dyn Iterator<Item = NftEvent>>,
+            Box::new(self.get_erc1155_transfers_batch_for_block(block)?),
+            Box::new(self.get_erc1155_transfers_single_for_block(block)?),
+            Box::new(self.get_erc1155_uri_for_block(block)?),
+            Box::new(self.get_erc721_approvals_for_block(block)?),
+            Box::new(self.get_erc721_transfers_for_block(block)?),
+        ];
+        Ok(merge_sorted_iters::<NftEvent>(events))
+    }
+    fn get_approvals_for_all_for_block(
         &mut self,
         block: i64,
     ) -> Result<impl Iterator<Item = NftEvent>> {
@@ -44,9 +55,9 @@ impl DieselClient {
         }))
     }
 
-    pub fn get_erc1155_transfers_batch_for_block(
+    fn get_erc1155_transfers_batch_for_block(
         &mut self,
-        block: &i64,
+        block: i64,
     ) -> Result<impl Iterator<Item = NftEvent>> {
         let records: Vec<_> = sql_query(
             "
@@ -82,7 +93,7 @@ impl DieselClient {
         }))
     }
 
-    pub fn get_erc1155_transfers_single_for_block(
+    fn get_erc1155_transfers_single_for_block(
         &mut self,
         block: i64,
     ) -> Result<impl Iterator<Item = NftEvent>> {
@@ -94,11 +105,7 @@ impl DieselClient {
             meta: EventMeta::Erc1155TransferSingle(t.into()),
         }))
     }
-
-    pub fn get_erc1155_uri_for_block(
-        &mut self,
-        block: i64,
-    ) -> Result<impl Iterator<Item = NftEvent>> {
+    fn get_erc1155_uri_for_block(&mut self, block: i64) -> Result<impl Iterator<Item = NftEvent>> {
         let events: Vec<DbErc1155Uri> = erc1155_uri
             .filter(schema::erc1155_uri::dsl::block_number.eq(&block))
             .load(&mut self.client)?;
@@ -108,7 +115,7 @@ impl DieselClient {
         }))
     }
 
-    pub fn get_erc721_approvals_for_block(
+    fn get_erc721_approvals_for_block(
         &mut self,
         block: i64,
     ) -> Result<impl Iterator<Item = NftEvent>> {
@@ -120,7 +127,7 @@ impl DieselClient {
             meta: EventMeta::Erc721Approval(t.into()),
         }))
     }
-    pub fn get_erc721_transfers_for_block(
+    fn get_erc721_transfers_for_block(
         &mut self,
         block: i64,
     ) -> Result<impl Iterator<Item = NftEvent>> {
@@ -199,7 +206,7 @@ mod tests {
 
         let mut client = DieselClient::new(TEST_DB_URL).unwrap();
         let batch_transfers: Vec<_> = client
-            .get_erc1155_transfers_batch_for_block(&10086624)
+            .get_erc1155_transfers_batch_for_block(10086624)
             .unwrap()
             .collect();
 
@@ -276,5 +283,20 @@ mod tests {
         ];
 
         assert_eq!(batch_transfers, expected)
+    }
+
+    fn is_sorted<T: Ord>(vec: &[T]) -> bool {
+        vec.windows(2).all(|w| w[0] <= w[1])
+    }
+    #[test]
+    fn get_events_for_block() {
+        // This test uses a block 10006884 containing events from all of:
+        // Erc721Approval, Erc1155TransferBatch, Erc1155TransferSingle and ApprovalForAll
+        // Check them out on https://etherscan.io
+
+        let mut client = DieselClient::new(TEST_DB_URL).unwrap();
+        let batch_transfers: Vec<_> = client.get_events_for_block(10006884).unwrap();
+        assert!(batch_transfers.len() >= 8);
+        assert!(is_sorted(batch_transfers.as_slice()))
     }
 }
