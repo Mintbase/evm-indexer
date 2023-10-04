@@ -1066,6 +1066,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "event-handler"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "event-retriever",
+ "tracing",
+]
+
+[[package]]
 name = "event-retriever"
 version = "0.1.0"
 dependencies = [

@@ -40,7 +40,7 @@ pub enum EventMeta {
 }
 
 /// Every Ethereum Event emits these properties
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct EventBase {
     pub block_number: u64,
     pub log_index: u64,
