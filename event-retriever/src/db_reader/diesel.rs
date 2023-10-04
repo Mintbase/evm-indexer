@@ -1,11 +1,12 @@
+use crate::db_reader::models::db::EvmEventTable;
+use crate::db_reader::models::EventMeta;
 use crate::db_reader::{
     models::{
         db::{
             DbApprovalForAll, DbErc1155TransferBatch, DbErc1155TransferSingle, DbErc1155Uri,
             DbErc721Approval, DbErc721Transfer,
         },
-        ApprovalForAll, Erc1155TransferBatch, Erc1155TransferSingle, Erc1155Uri, Erc721Approval,
-        Erc721Transfer,
+        NftEvent,
     },
     schema::{
         self, approval_for_all::dsl::approval_for_all,
@@ -33,17 +34,20 @@ impl DieselClient {
     pub fn get_approvals_for_all_for_block(
         &mut self,
         block: i64,
-    ) -> Result<impl Iterator<Item = ApprovalForAll>> {
+    ) -> Result<impl Iterator<Item = NftEvent>> {
         let events: Vec<DbApprovalForAll> = approval_for_all
             .filter(schema::approval_for_all::dsl::block_number.eq(&block))
             .load(&mut self.client)?;
-        Ok(events.into_iter().map(|t| t.into()))
+        Ok(events.into_iter().map(|t| NftEvent {
+            base: t.event_base(),
+            meta: EventMeta::ApprovalForAll(t.into()),
+        }))
     }
 
     pub fn get_erc1155_transfers_batch_for_block(
         &mut self,
         block: &i64,
-    ) -> Result<impl Iterator<Item = Erc1155TransferBatch>> {
+    ) -> Result<impl Iterator<Item = NftEvent>> {
         let records: Vec<_> = sql_query(
             "
         SELECT
@@ -72,53 +76,68 @@ impl DieselClient {
         .bind::<BigInt, _>(block)
         .load::<DbErc1155TransferBatch>(&mut self.client)?;
 
-        Ok(records.into_iter().map(|t| t.into()))
+        Ok(records.into_iter().map(|t| NftEvent {
+            base: t.event_base(),
+            meta: EventMeta::Erc1155TransferBatch(t.into()),
+        }))
     }
 
     pub fn get_erc1155_transfers_single_for_block(
         &mut self,
         block: i64,
-    ) -> Result<impl Iterator<Item = Erc1155TransferSingle>> {
+    ) -> Result<impl Iterator<Item = NftEvent>> {
         let events: Vec<DbErc1155TransferSingle> = erc1155_transfer_single
             .filter(schema::erc1155_transfer_single::dsl::block_number.eq(&block))
             .load(&mut self.client)?;
-        Ok(events.into_iter().map(|t| t.into()))
+        Ok(events.into_iter().map(|t| NftEvent {
+            base: t.event_base(),
+            meta: EventMeta::Erc1155TransferSingle(t.into()),
+        }))
     }
 
     pub fn get_erc1155_uri_for_block(
         &mut self,
         block: i64,
-    ) -> Result<impl Iterator<Item = Erc1155Uri>> {
+    ) -> Result<impl Iterator<Item = NftEvent>> {
         let events: Vec<DbErc1155Uri> = erc1155_uri
             .filter(schema::erc1155_uri::dsl::block_number.eq(&block))
             .load(&mut self.client)?;
-        Ok(events.into_iter().map(|t| t.into()))
+        Ok(events.into_iter().map(|t| NftEvent {
+            base: t.event_base(),
+            meta: EventMeta::Erc1155Uri(t.into()),
+        }))
     }
 
     pub fn get_erc721_approvals_for_block(
         &mut self,
         block: i64,
-    ) -> Result<impl Iterator<Item = Erc721Approval>> {
+    ) -> Result<impl Iterator<Item = NftEvent>> {
         let events: Vec<DbErc721Approval> = erc721_approval
             .filter(schema::erc721_approval::dsl::block_number.eq(&block))
             .load(&mut self.client)?;
-        Ok(events.into_iter().map(|t| t.into()))
+        Ok(events.into_iter().map(|t| NftEvent {
+            base: t.event_base(),
+            meta: EventMeta::Erc721Approval(t.into()),
+        }))
     }
     pub fn get_erc721_transfers_for_block(
         &mut self,
         block: i64,
-    ) -> Result<impl Iterator<Item = Erc721Transfer>> {
+    ) -> Result<impl Iterator<Item = NftEvent>> {
         let db_transfers: Vec<DbErc721Transfer> = erc721_transfer
             .filter(schema::erc721_transfer::dsl::block_number.eq(&block))
             .load(&mut self.client)?;
-        Ok(db_transfers.into_iter().map(|t| t.into()))
+        Ok(db_transfers.into_iter().map(|t| NftEvent {
+            base: t.event_base(),
+            meta: EventMeta::Erc721Transfer(t.into()),
+        }))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db_reader::models::EventBase;
+    use crate::db_reader::models::{Erc1155TransferBatch, EventBase};
     use ethers::types::{Address, U256};
     use std::str::FromStr;
 
@@ -185,68 +204,74 @@ mod tests {
             .collect();
 
         let expected = [
-            Erc1155TransferBatch {
+            NftEvent {
                 base: EventBase {
                     block_number: 10086624,
                     log_index: 137,
                     transaction_index: 81,
                     contract_address: address("0xffb8bb08aed493fa0814fe4cca300836a29cda33"),
                 },
-                operator: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
-                from: address("0x0000000000000000000000000000000000000000"),
-                to: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
-                ids: [
-                    "46781181410086087605121326430179017800901876837323210329325266864881489549285",
-                    "35633793719885825044527715166617634530632869619605299797527323660719540928159",
-                    "21093830714357625331788682464197645861493957548368273976921276582172066321941",
-                ]
-                .map(|t| U256::from_dec_str(t).unwrap())
-                .to_vec(),
-                values: ["1000000", "1000000", "1000000"]
-                    .map(|t| U256::from_dec_str(t).unwrap())
-                    .to_vec(),
+                meta: EventMeta::Erc1155TransferBatch(Erc1155TransferBatch {
+                    operator: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
+                    from: address("0x0000000000000000000000000000000000000000"),
+                    to: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
+                    ids: [
+                        "46781181410086087605121326430179017800901876837323210329325266864881489549285",
+                        "35633793719885825044527715166617634530632869619605299797527323660719540928159",
+                        "21093830714357625331788682464197645861493957548368273976921276582172066321941",
+                    ]
+                        .map(|t| U256::from_dec_str(t).unwrap())
+                        .to_vec(),
+                    values: ["1000000", "1000000", "1000000"]
+                        .map(|t| U256::from_dec_str(t).unwrap())
+                        .to_vec(),
+                })
             },
-            Erc1155TransferBatch {
+            NftEvent {
                 base: EventBase {
                     block_number: 10086624,
                     log_index: 140,
                     transaction_index: 81,
                     contract_address: address("0xffb8bb08aed493fa0814fe4cca300836a29cda33"),
                 },
-                operator: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
-                from: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
-                to: address("0x90e5e2d3f5b7d71179e371ae2783c08bc77c056d"),
-                ids: [
-                    "46781181410086087605121326430179017800901876837323210329325266864881489549285",
-                    "35633793719885825044527715166617634530632869619605299797527323660719540928159",
-                    "21093830714357625331788682464197645861493957548368273976921276582172066321941",
-                ]
-                .map(|t| U256::from_dec_str(t).unwrap())
-                .to_vec(),
-                values: ["612982", "72241", "0"]
-                    .map(|t| U256::from_dec_str(t).unwrap())
-                    .to_vec(),
+                meta: EventMeta::Erc1155TransferBatch(Erc1155TransferBatch {
+                    operator: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
+                    from: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
+                    to: address("0x90e5e2d3f5b7d71179e371ae2783c08bc77c056d"),
+                    ids: [
+                        "46781181410086087605121326430179017800901876837323210329325266864881489549285",
+                        "35633793719885825044527715166617634530632869619605299797527323660719540928159",
+                        "21093830714357625331788682464197645861493957548368273976921276582172066321941",
+                    ]
+                        .map(|t| U256::from_dec_str(t).unwrap())
+                        .to_vec(),
+                    values: ["612982", "72241", "0"]
+                        .map(|t| U256::from_dec_str(t).unwrap())
+                        .to_vec(),
+                })
             },
-            Erc1155TransferBatch {
+            NftEvent {
                 base: EventBase {
                     block_number: 10086624,
                     log_index: 145,
                     transaction_index: 82,
                     contract_address: address("0xffb8bb08aed493fa0814fe4cca300836a29cda33"),
                 },
-                operator: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
-                from: address("0x0000000000000000000000000000000000000000"),
-                to: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
-                ids: [
-                    "46781181410086087605121326430179017800901876837323210329325266864881489549285",
-                    "35633793719885825044527715166617634530632869619605299797527323660719540928159",
-                    "21093830714357625331788682464197645861493957548368273976921276582172066321941",
-                ]
-                .map(|t| U256::from_dec_str(t).unwrap())
-                .to_vec(),
-                values: ["980000", "980000", "980000"]
-                    .map(|t| U256::from_dec_str(t).unwrap())
-                    .to_vec(),
+                meta: EventMeta::Erc1155TransferBatch(Erc1155TransferBatch {
+                    operator: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
+                    from: address("0x0000000000000000000000000000000000000000"),
+                    to: address("0xbe12fd822d14e64ce9fe806519db20c865a23bc7"),
+                    ids: [
+                        "46781181410086087605121326430179017800901876837323210329325266864881489549285",
+                        "35633793719885825044527715166617634530632869619605299797527323660719540928159",
+                        "21093830714357625331788682464197645861493957548368273976921276582172066321941",
+                    ]
+                        .map(|t| U256::from_dec_str(t).unwrap())
+                        .to_vec(),
+                    values: ["980000", "980000", "980000"]
+                        .map(|t| U256::from_dec_str(t).unwrap())
+                        .to_vec(),
+                })
             },
         ];
 
