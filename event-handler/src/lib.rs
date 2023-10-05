@@ -110,7 +110,7 @@ mod tests {
     fn event_processing() {
         static TEST_DB_URL: &str = "postgresql://postgres:postgres@localhost:5432/postgres";
         let handler = EventHandler {
-            source_db: DieselClient::new(TEST_DB_URL).unwrap(),
+            source: DieselClient::new(TEST_DB_URL).unwrap(),
         };
         assert!(handler.process_events_for_block(10006884).is_ok());
     }
