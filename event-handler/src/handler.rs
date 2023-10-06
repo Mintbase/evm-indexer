@@ -1,7 +1,9 @@
+use crate::models::NftApproval;
 use crate::store::DataStore;
 use anyhow::{Context, Result};
 use event_retriever::db_reader::diesel::EventSource;
 use event_retriever::db_reader::models::*;
+
 pub struct EventHandler {
     /// source of events processing
     source: EventSource,
@@ -38,7 +40,7 @@ impl EventHandler {
                 }
                 EventMeta::Erc1155TransferSingle(t) => Self::handle_erc1155_transfer(base, t),
                 EventMeta::Erc1155Uri(uri) => Self::handle_erc1155_uri(base, uri),
-                EventMeta::Erc721Approval(a) => Self::handle_erc721_approval(base, a),
+                EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a),
                 EventMeta::Erc721Transfer(transfer) => Self::handle_erc721_transfer(base, transfer),
             };
         });
@@ -71,13 +73,39 @@ impl EventHandler {
         tracing::debug!("Processing {:?} of {:?}", transfer, base.contract_address);
     }
 
-    fn handle_erc721_approval(base: EventBase, approval: Erc721Approval) {
+    fn handle_erc721_approval(&mut self, base: EventBase, approval: Erc721Approval) {
         tracing::debug!("Processing {:?} of {:?}", approval, base.contract_address);
+        let _ = self
+            .store
+            .set_approval(NftApproval::from_event(base.contract_address, approval));
     }
 
     fn handle_erc721_transfer(base: EventBase, transfer: Erc721Transfer) {
         // Note that these may also include Erc20 Transfers (and we will have to handle that).
         tracing::debug!("Processing {:?} of {:?}", transfer, base.contract_address);
+        // let nftId = contractAddress.toHexString() + "/" + id.toString();
+        // let nft = Nft.load(nftId);
+        // if (nft == null) {
+        //     let contract = ERC1155.bind(contractAddress);
+        //     nft = new Nft(nftId);
+        //     nft.contract = contractAddress.toHexString();
+        //     nft.tokenID = id;
+        //     nft.creatorAddress = contract.creators(id);
+        //     nft.tokenURI = contract.uri(id);
+        //     nft.createdAt = timestamp;
+        //     nft.save();
+        // }
+        //
+        // if (to == ZERO_ADDRESS) {
+        //     // burn token
+        //     nft.removedAt = timestamp;
+        //     nft.save();
+        // }
+        //
+        // if (from != ZERO_ADDRESS) {
+        //     updateOwnership(nftId, from, BIGINT_ZERO.minus(value));
+        // }
+        // updateOwnership(nftId, to, value);
     }
 
     fn handle_erc1155_uri(base: EventBase, uri: Erc1155Uri) {

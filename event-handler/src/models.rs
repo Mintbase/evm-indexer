@@ -5,11 +5,21 @@ use diesel::{
     Selectable,
 };
 use ethers::types::{Address, U256};
+use event_retriever::db_reader::models::{conversions::*, Erc721Approval};
 
 #[derive(Debug)]
 pub struct NftId {
     pub address: Address,
     pub token_id: U256,
+}
+
+impl NftId {
+    pub fn new(address: Vec<u8>, token_id: BigDecimal) -> Self {
+        Self {
+            address: Address::from_slice(address.as_slice()),
+            token_id: u256_from_big_decimal(&token_id),
+        }
+    }
 }
 
 #[derive(Queryable, Selectable, Insertable)]
@@ -29,15 +39,25 @@ pub(crate) struct ContractAbi {
     abi: Option<serde_json::Value>,
 }
 
-#[derive(Queryable, Selectable, Insertable)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset)]
 #[diesel(table_name = nft_approvals)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub(crate) struct NftApproval {
+pub struct NftApproval {
     contract_address: Vec<u8>,
     token_id: BigDecimal,
     approved: Vec<u8>,
 }
 
+impl NftApproval {
+    pub fn from_event(contract_address: Address, event: Erc721Approval) -> Self {
+        // Note that event.owner is unused here.
+        Self {
+            contract_address: contract_address.as_bytes().to_vec(),
+            token_id: big_decimal_from_u256(&event.id),
+            approved: event.approved.as_bytes().to_vec(),
+        }
+    }
+}
 #[derive(Queryable, Selectable, Insertable, AsChangeset)]
 #[diesel(table_name = nfts)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
