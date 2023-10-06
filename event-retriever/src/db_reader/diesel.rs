@@ -15,14 +15,14 @@ use crate::db_reader::{
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, sql_query, sql_types::BigInt, Connection, RunQueryDsl};
 
-pub struct DieselClient {
+pub struct EventSource {
     client: PgConnection,
 }
 
-impl DieselClient {
+impl EventSource {
     pub fn new(connection: &str) -> Result<Self> {
         Ok(Self {
-            client: DieselClient::establish_connection(connection)?,
+            client: Self::establish_connection(connection)?,
         })
     }
 
@@ -150,8 +150,8 @@ mod tests {
 
     static TEST_DB_URL: &str = "postgresql://postgres:postgres@localhost:5432/postgres";
 
-    fn test_client() -> DieselClient {
-        DieselClient::new(TEST_DB_URL).unwrap()
+    fn test_client() -> EventSource {
+        EventSource::new(TEST_DB_URL).unwrap()
     }
 
     fn address(val: &str) -> Address {
@@ -204,7 +204,7 @@ mod tests {
         // 0x0d5333fc99ca227a2126c8d0ff3193ba1c619fbeaeb330098dc705e646890ca1
         // Check them out on https://etherscan.io
 
-        let mut client = DieselClient::new(TEST_DB_URL).unwrap();
+        let mut client = EventSource::new(TEST_DB_URL).unwrap();
         let batch_transfers: Vec<_> = client
             .get_erc1155_transfers_batch_for_block(10086624)
             .unwrap()
@@ -294,7 +294,7 @@ mod tests {
         // Erc721Approval, Erc1155TransferBatch, Erc1155TransferSingle and ApprovalForAll
         // Check them out on https://etherscan.io
 
-        let mut client = DieselClient::new(TEST_DB_URL).unwrap();
+        let mut client = EventSource::new(TEST_DB_URL).unwrap();
         let batch_transfers: Vec<_> = client.get_events_for_block(10006884).unwrap();
         assert!(batch_transfers.len() >= 8);
         assert!(is_sorted(batch_transfers.as_slice()))

@@ -55,18 +55,20 @@ CREATE TABLE nfts
 );
 
 -- approvals are cleared on transfer.
+DROP TABLE nft_approvals;
 CREATE TABLE nft_approvals
 (
     contract_address bytea          not null,
     token_id         numeric(78, 0) not null,
-    approved         bytea,
+    approved         bytea not null,
     primary key (contract_address, token_id)
 );
-
 CREATE TABLE approval_for_all
 (
     contract_address bytea not null,
     owner            bytea not null,
     operator         bytea not null,
-    approved         bool  not null
+    approved         bool  not null,
+    -- this was semi-arbitrarily chosen, but makes some sense
+    primary key (contract_address, owner)
 );
