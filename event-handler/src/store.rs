@@ -1,8 +1,6 @@
-use crate::schema::nft_approvals;
-use crate::schema::nfts::token_id;
 use crate::{
     models::*,
-    schema::{nfts, token_contracts},
+    schema::{nft_approvals, nfts, token_contracts},
 };
 use anyhow::{Context, Result};
 use bigdecimal::{BigDecimal, Num};
@@ -28,7 +26,8 @@ impl DataStore {
         let nft: Option<Nft> = nfts::dsl::nfts
             .filter(nfts::contract_address.eq(&token.address.as_bytes().to_vec()))
             .filter(
-                token_id.eq(&BigDecimal::from_str_radix(&token.token_id.to_string(), 10).unwrap()),
+                nfts::token_id
+                    .eq(&BigDecimal::from_str_radix(&token.token_id.to_string(), 10).unwrap()),
             )
             .first(&mut self.client)
             .optional()
