@@ -11,8 +11,6 @@ env:
 jobs:
   build-test:
     runs-on: ubuntu-latest
-    container:
-      image: rust:latest
 
     services:
       postgres:
