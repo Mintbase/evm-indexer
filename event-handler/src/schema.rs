@@ -1,19 +1,19 @@
 // @generated automatically by Diesel CLI.
 
-pub mod sql_types {
-
-    #[derive(diesel::sql_types::SqlType)]
-    #[diesel(postgres_type(name = "content_category"))]
-    pub struct ContentCategory;
-
-    #[derive(diesel::sql_types::SqlType)]
-    #[diesel(postgres_type(name = "content_flag"))]
-    pub struct ContentFlag;
-
-    #[derive(diesel::sql_types::SqlType)]
-    #[diesel(postgres_type(name = "token_type"))]
-    pub struct TokenType;
-}
+// pub mod sql_types {
+//
+//     #[derive(diesel::sql_types::SqlType)]
+//     #[diesel(postgres_type(name = "content_category"))]
+//     pub struct ContentCategory;
+//
+//     #[derive(diesel::sql_types::SqlType)]
+//     #[diesel(postgres_type(name = "content_flag"))]
+//     pub struct ContentFlag;
+//
+//     #[derive(diesel::sql_types::SqlType)]
+//     #[diesel(postgres_type(name = "token_type"))]
+//     pub struct TokenType;
+// }
 
 diesel::table! {
     approval_for_all (contract_address, owner) {
@@ -56,10 +56,10 @@ diesel::table! {
 }
 
 diesel::table! {
-    use diesel::sql_types::*;
-    use super::sql_types::TokenType;
-    use super::sql_types::ContentFlag;
-    use super::sql_types::ContentCategory;
+    // use diesel::sql_types::*;
+    // use super::sql_types::TokenType;
+    // use super::sql_types::ContentFlag;
+    // use super::sql_types::ContentCategory;
 
     token_contracts (address) {
         address -> Bytea,

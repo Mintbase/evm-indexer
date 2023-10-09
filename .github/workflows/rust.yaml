@@ -12,6 +12,10 @@ jobs:
   build-test:
     runs-on: ubuntu-latest
 
+    # This image already contains a pre-populated events db "arak" and empty "store"
+    # It takes less than 30 seconds to load this service image
+    # as opposed to wrapping docker-compose up and down around the cargo test
+    # which takes about 1m30 seconds.
     services:
       postgres:
         image: bh2smith/test-events:latest
@@ -37,7 +41,6 @@ jobs:
         run: |
           cargo install --debug diesel_cli --no-default-features --features postgres
           DATABASE_URL=postgresql://postgres:postgres@localhost:5432/store diesel migration run
- 
 
 #      - name: Start Docker Compose
 #        run: docker-compose up -d

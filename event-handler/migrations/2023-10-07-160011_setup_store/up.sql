@@ -1,6 +1,6 @@
-CREATE TYPE token_type AS ENUM ('erc20', 'erc721', 'erc1155', 'unknown');
-CREATE TYPE content_flag AS ENUM ('nsfl', 'nsfw', 'illegal');
-CREATE TYPE content_category AS ENUM ( 'sensitive', 'educational', 'art', 'history', 'interactive', 'limited', 'audio', 'video', 'charity');
+-- CREATE TYPE token_type AS ENUM ('erc20', 'erc721', 'erc1155', 'unknown');
+-- CREATE TYPE content_flag AS ENUM ('nsfl', 'nsfw', 'illegal');
+-- CREATE TYPE content_category AS ENUM ( 'sensitive', 'educational', 'art', 'history', 'interactive', 'limited', 'audio', 'video', 'charity');
 
 CREATE TABLE transactions
 (
@@ -21,9 +21,9 @@ CREATE TABLE token_contracts
     token_uri        text, -- Null for erc20
     -- This uniquely defines creation tx
     created_block    int8       not null,
-    created_tx_index int8       not null,
-    content_flags    content_flag[],
-    content_category content_category[]
+    created_tx_index int8       not null
+--     content_flags    content_flag[],
+--     content_category content_category[]
 );
 
 CREATE TABLE contract_abis

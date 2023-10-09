@@ -5,6 +5,6 @@ DROP TABLE nfts;
 DROP TABLE nft_approvals;
 DROP TABLE approval_for_all;
 
-DROP type token_type;
-DROP type content_flag;
-DROP type content_category;
+-- DROP type token_type;
+-- DROP type content_flag;
+-- DROP type content_category;
