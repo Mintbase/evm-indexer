@@ -16,6 +16,7 @@ services:
 
   store-migration:
     build:
+      context: .
       dockerfile: test_db/Dockerfile.migration
     depends_on:
       - postgres-db
