@@ -11,19 +11,22 @@ env:
 jobs:
   build-test:
     runs-on: ubuntu-latest
-#    services:
-#      postgres:
-#        image: bh2smith/test-events:latest
-#        env:
-#          POSTGRES_PASSWORD: postgres
-#        # Set health checks to wait until postgres has started
-#        options: >-
-#          --health-cmd pg_isready
-#          --health-interval 10s
-#          --health-timeout 5s
-#          --health-retries 5
-#        ports:
-#          - 5432:5432
+    container:
+      image: rust:latest
+
+    services:
+      postgres:
+        image: bh2smith/test-events:latest
+        env:
+          POSTGRES_PASSWORD: postgres
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
 
     steps:
       - name: Checkout code
@@ -32,11 +35,17 @@ jobs:
       - name: Lint
         run: cargo fmt --check && cargo clippy --all-targets --verbose
 
-      - name: Start Docker Compose
-        run: docker-compose up -d
+      - name: Migration
+        run: |
+          cargo install --debug diesel_cli --no-default-features --features postgres
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/store diesel migration run
+ 
+
+#      - name: Start Docker Compose
+#        run: docker-compose up -d
 
       - name: Run Tests
         run: cargo test
 
-      - name: Stop Docker Compose
-        run: docker-compose down
+#      - name: Stop Docker Compose
+#        run: docker-compose down
