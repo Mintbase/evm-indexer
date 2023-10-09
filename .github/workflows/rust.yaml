@@ -34,19 +34,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Lint
+      - name: Lint & Clippy
         run: cargo fmt --check && cargo clippy --all-targets --verbose
 
-      - name: Migration
+      - name: Store Migration
         run: |
           cargo install --debug diesel_cli --no-default-features --features postgres
           DATABASE_URL=postgresql://postgres:postgres@localhost:5432/store diesel migration run
 
-#      - name: Start Docker Compose
-#        run: docker-compose up -d
-
       - name: Run Tests
         run: cargo test
-
-#      - name: Stop Docker Compose
-#        run: docker-compose down
