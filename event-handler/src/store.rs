@@ -5,7 +5,8 @@ use crate::{
 use anyhow::{Context, Result};
 use bigdecimal::{BigDecimal, Num};
 use diesel::{pg::PgConnection, prelude::*, Connection, RunQueryDsl};
-use ethers::types::Address;
+use ethers::types::{Address, U256};
+use event_retriever::db_reader::models::EventBase;
 
 pub struct DataStore {
     client: PgConnection,
@@ -22,7 +23,23 @@ impl DataStore {
         PgConnection::establish(db_url).context("Error connecting to Diesel Client")
     }
 
-    pub fn load_nft(&mut self, token: NftId) -> Option<Nft> {
+    pub fn load_id_contract_token(
+        &mut self,
+        base: &EventBase,
+        id: U256,
+    ) -> (NftId, TokenContract, Nft) {
+        let nft_id = NftId {
+            address: base.contract_address,
+            token_id: id,
+        };
+        // Could reduce the number of DB transactions by not saving in these two places,
+        // but it is safer to ensure it gets written here
+        let contract = self.load_or_initialize_contract(base);
+        let nft = self.load_or_initialize_nft(base, &nft_id);
+        (nft_id, contract, nft)
+    }
+
+    pub fn load_nft(&mut self, token: &NftId) -> Option<Nft> {
         let nft: Option<Nft> = nfts::dsl::nfts
             .filter(nfts::contract_address.eq(&token.address.as_bytes().to_vec()))
             .filter(
@@ -35,12 +52,24 @@ impl DataStore {
         nft
     }
 
-    pub fn save_nft(&mut self, nft: Nft) -> Result<()> {
+    pub fn load_or_initialize_nft(&mut self, base: &EventBase, nft_id: &NftId) -> Nft {
+        match self.load_nft(nft_id) {
+            Some(nft) => nft,
+            None => {
+                tracing::debug!("new nft {:?}", nft_id);
+                let nft = Nft::build_from(base, nft_id);
+                self.save_nft(&nft).expect("save_nft on transfer");
+                nft
+            }
+        }
+    }
+
+    pub fn save_nft(&mut self, nft: &Nft) -> Result<()> {
         diesel::insert_into(nfts::dsl::nfts)
-            .values(&nft)
+            .values(nft)
             .on_conflict((nfts::contract_address, nfts::token_id))
             .do_update()
-            .set(&nft)
+            .set(nft)
             .execute(&mut self.client)?;
         Ok(())
     }
@@ -52,12 +81,23 @@ impl DataStore {
             .expect("load_contract");
         contract
     }
-    pub fn save_contract(&mut self, contract: TokenContract) -> Result<()> {
+
+    pub fn load_or_initialize_contract(&mut self, base: &EventBase) -> TokenContract {
+        match self.load_contract(base.contract_address) {
+            Some(contract) => contract,
+            None => {
+                let contract = TokenContract::from_event_base(base);
+                self.save_contract(&contract).expect("save_contract");
+                contract
+            }
+        }
+    }
+    pub fn save_contract(&mut self, contract: &TokenContract) -> Result<()> {
         diesel::insert_into(token_contracts::dsl::token_contracts)
-            .values(&contract)
+            .values(contract)
             .on_conflict(token_contracts::address)
             .do_update()
-            .set(&contract)
+            .set(contract)
             .execute(&mut self.client)?;
         Ok(())
     }
@@ -72,7 +112,7 @@ impl DataStore {
         Ok(())
     }
     pub fn clear_approval(&mut self, token: NftId) -> Result<()> {
-        let result = diesel::delete(
+        diesel::delete(
             nft_approvals::dsl::nft_approvals
                 .filter(nft_approvals::contract_address.eq(&token.address.as_bytes().to_vec()))
                 .filter(
@@ -84,7 +124,6 @@ impl DataStore {
                 ),
         )
         .execute(&mut self.client)?;
-        println!("{:?}", result);
         Ok(())
     }
 }

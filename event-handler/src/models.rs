@@ -5,7 +5,9 @@ use diesel::{
     Selectable,
 };
 use ethers::types::{Address, U256};
-use event_retriever::db_reader::models::{conversions::*, Erc721Approval};
+use event_retriever::db_reader::models::{conversions::*, Erc721Approval, EventBase};
+use serde_json::{Map, Value};
+use std::fmt::Debug;
 
 #[derive(Debug)]
 pub struct NftId {
@@ -64,15 +66,48 @@ impl NftApproval {
 pub struct Nft {
     contract_address: Vec<u8>,
     token_id: BigDecimal,
-    owner: Vec<u8>,
-    last_transfer_block: Option<i64>,
-    last_transfer_tx: Option<i64>,
+    pub owner: Vec<u8>,
+    pub last_transfer_block: Option<i64>,
+    pub last_transfer_tx: Option<i64>,
+    // Todo - This should not be optional
     mint_block: Option<i64>,
     mint_tx: Option<i64>,
-    burn_block: Option<i64>,
-    burn_tx: Option<i64>,
-    minter: Option<Vec<u8>>,
-    json: Option<serde_json::Value>,
+    pub burn_block: Option<i64>,
+    pub burn_tx: Option<i64>,
+    pub minter: Option<Vec<u8>>,
+    pub json: Option<serde_json::Value>,
+}
+
+impl Nft {
+    pub fn build_from(base: &EventBase, nft_id: &NftId) -> Self {
+        Self {
+            contract_address: nft_id.address.as_bytes().to_vec(),
+            token_id: big_decimal_from_u256(&nft_id.token_id),
+            owner: vec![],
+            last_transfer_block: None,
+            last_transfer_tx: None,
+            // Maybe its best if we set this when transfer comes from Zero.
+            mint_block: Some(base.block_number.try_into().expect("i64 block_number")),
+            mint_tx: Some(
+                base.transaction_index
+                    .try_into()
+                    .expect("i64 transaction_index"),
+            ),
+            burn_block: None,
+            burn_tx: None,
+            minter: None,
+            json: None,
+        }
+    }
+
+    pub fn update_json(&mut self, key: String, value: String) {
+        let mut json = match self.json.clone().unwrap_or_default() {
+            Value::Object(map) => map,
+            _ => Map::new(),
+        };
+        json.insert(key, Value::String(value));
+        self.json = Some(Value::Object(json));
+    }
 }
 
 #[derive(Queryable, Selectable, Insertable, AsChangeset)]
@@ -89,6 +124,23 @@ pub struct TokenContract {
     created_tx_index: i64,
     // content_flags -> Nullable<Array<Nullable<ContentFlag>>>,
     // content_category -> Nullable<Array<Nullable<ContentCategory>>>
+}
+
+impl TokenContract {
+    pub fn from_event_base(event: &EventBase) -> Self {
+        Self {
+            address: event.contract_address.as_bytes().to_vec(),
+            // TODO - find these an put them.
+            name: None,
+            symbol: None,
+            decimals: None,
+            // TODO - this should be base_url
+            token_uri: None,
+            // assume that the first time a contract is seen is the created block
+            created_block: event.block_number.try_into().expect("u64 conversion"),
+            created_tx_index: event.transaction_index.try_into().expect("u64 conversion"),
+        }
+    }
 }
 
 #[derive(Queryable, Selectable, Insertable)]

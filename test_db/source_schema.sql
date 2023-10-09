@@ -1,4 +1,4 @@
--- CREATE DATABASE store
+CREATE DATABASE store;
 -- Connect to store
 CREATE TYPE token_type AS ENUM ('erc20', 'erc721', 'erc1155', 'unknown');
 CREATE TYPE content_flag AS ENUM ('nsfl', 'nsfw', 'illegal');
