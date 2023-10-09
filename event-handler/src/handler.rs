@@ -10,9 +10,9 @@ use event_retriever::db_reader::{diesel::EventSource, models::*};
 const ZERO_ADDRESS: Address = Address::zero();
 
 pub struct EventHandler {
-    /// source of events processing
+    /// Source of events for processing
     source: EventSource,
-    // Location of existing stored content
+    /// Location of existing stored content
     store: DataStore,
 }
 
