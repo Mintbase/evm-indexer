@@ -1,5 +1,7 @@
-use crate::models::Nft;
-use crate::{models::NftApproval, store::DataStore};
+use crate::{
+    models::{ApprovalForAll as ApprovalForAllModel, Nft, NftApproval},
+    store::DataStore,
+};
 use anyhow::{Context, Result};
 use ethers::types::Address;
 use event_retriever::db_reader::diesel::BlockRange;
@@ -29,7 +31,7 @@ impl EventHandler {
             //  eth_getTransactionByBlockNumberAndIndex OR
             //  eth_getBlockByNumber (with true flag for hashes)
             match meta {
-                EventMeta::ApprovalForAll(a) => Self::handle_approval_for_all(base, a),
+                EventMeta::ApprovalForAll(a) => self.handle_approval_for_all(base, a),
                 EventMeta::Erc1155TransferBatch(batch) => {
                     for (id, value) in batch.ids.into_iter().zip(batch.values.into_iter()) {
                         self.handle_erc1155_transfer(
@@ -53,22 +55,23 @@ impl EventHandler {
         Ok(())
     }
 
-    fn handle_approval_for_all(base: EventBase, approval: ApprovalForAll) {
-        let ApprovalForAll {
-            owner,
-            operator,
-            approved,
-        } = approval;
-        let log_word = match approved {
+    fn handle_approval_for_all(&mut self, base: EventBase, approval: ApprovalForAll) {
+        let log_word = match approval.approved {
             true => "approved",
             false => "revoked",
         };
         tracing::debug!(
             "{:?} {log_word} {:?} as operator of all their {}",
-            owner,
-            operator,
+            approval.owner,
+            approval.operator,
             base.contract_address
-        )
+        );
+        self.store
+            .set_approval_for_all(ApprovalForAllModel::from_event(
+                base.contract_address,
+                approval,
+            ))
+            .expect("set approval_for_all");
     }
 
     fn handle_erc1155_transfer(&mut self, base: EventBase, transfer: Erc1155TransferSingle) {
@@ -99,7 +102,7 @@ impl EventHandler {
         // TODO - fetch and set json. Maybe in load_or_initialize
         self.store.save_nft(&nft).expect("save Nft");
         // Approvals are unset on transfer.
-        self.store.clear_approval(nft_id).expect("clear approval");
+        self.store.clear_approval(&nft_id).expect("clear approval");
     }
 
     fn generic_transfer(
@@ -155,7 +158,7 @@ mod tests {
         assert!(handler
             .process_events_for_block_range(BlockRange {
                 start: block,
-                end: block + 10,
+                end: block + 1000,
             })
             .is_ok());
     }

@@ -1,6 +1,6 @@
 use crate::{
     models::*,
-    schema::{nft_approvals, nfts, token_contracts},
+    schema::{approval_for_all, nft_approvals, nfts, token_contracts},
 };
 use anyhow::{Context, Result};
 use bigdecimal::{BigDecimal, Num};
@@ -102,6 +102,15 @@ impl DataStore {
         Ok(())
     }
 
+    pub fn set_approval_for_all(&mut self, approval: ApprovalForAll) -> Result<()> {
+        diesel::insert_into(approval_for_all::dsl::approval_for_all)
+            .values(&approval)
+            .on_conflict((approval_for_all::contract_address, approval_for_all::owner))
+            .do_update()
+            .set(&approval)
+            .execute(&mut self.client)?;
+        Ok(())
+    }
     pub fn set_approval(&mut self, approval: NftApproval) -> Result<()> {
         diesel::insert_into(nft_approvals::dsl::nft_approvals)
             .values(&approval)
@@ -111,7 +120,7 @@ impl DataStore {
             .execute(&mut self.client)?;
         Ok(())
     }
-    pub fn clear_approval(&mut self, token: NftId) -> Result<()> {
+    pub fn clear_approval(&mut self, token: &NftId) -> Result<()> {
         diesel::delete(
             nft_approvals::dsl::nft_approvals
                 .filter(nft_approvals::contract_address.eq(&token.address.as_bytes().to_vec()))
@@ -126,6 +135,20 @@ impl DataStore {
         .execute(&mut self.client)?;
         Ok(())
     }
+    pub fn load_approval(&mut self, token: &NftId) -> Result<Option<NftApproval>> {
+        Ok(nft_approvals::dsl::nft_approvals
+            .filter(nft_approvals::contract_address.eq(&token.address.as_bytes().to_vec()))
+            .filter(
+                nft_approvals::token_id.eq(&BigDecimal::from_str_radix(
+                    &token.token_id.to_string(),
+                    10,
+                )
+                .unwrap()),
+            )
+            .first(&mut self.client)
+            .optional()
+            .expect("load_approval"))
+    }
 }
 
 #[cfg(test)]
@@ -135,7 +158,7 @@ mod tests {
         schema::{
             approval_for_all, contract_abis, nft_approvals, nfts, token_contracts, transactions,
         },
-        store::DataStore,
+        store::{DataStore, NftId},
     };
     use diesel::RunQueryDsl;
     use ethers::types::{Address, U256};
@@ -171,16 +194,23 @@ mod tests {
         store.clear_tables();
 
         let contract_address = Address::from_low_u64_be(1);
+        let token = NftId {
+            address: contract_address,
+            token_id: U256::from(123),
+        };
         let approval = NftApproval::from_event(
             contract_address,
             Erc721Approval {
                 owner: Address::from_low_u64_be(2),
                 approved: Address::from_low_u64_be(3),
-                id: U256::from(123),
+                id: token.token_id,
             },
         );
+        assert!(store.load_approval(&token).unwrap().is_none());
         assert!(store.set_approval(approval).is_ok());
-        // TODO - test set values are expected
-        // TODO - test clear approval
+        // The only thing this test does not check is that the saved approval actually has the correct "approved" field.
+        assert!(store.load_approval(&token).unwrap().is_some());
+        assert!(store.clear_approval(&token).is_ok());
+        assert!(store.load_approval(&token).unwrap().is_none());
     }
 }

@@ -5,7 +5,9 @@ use diesel::{
     Selectable,
 };
 use ethers::types::{Address, U256};
-use event_retriever::db_reader::models::{conversions::*, Erc721Approval, EventBase};
+use event_retriever::db_reader::models::{
+    conversions::*, ApprovalForAll as ApprovalForAllEvent, Erc721Approval, EventBase,
+};
 use serde_json::{Map, Value};
 use std::fmt::Debug;
 
@@ -24,24 +26,35 @@ impl NftId {
     }
 }
 
-#[derive(Queryable, Selectable, Insertable)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset)]
 #[diesel(table_name = approval_for_all)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub(crate) struct ApprovalForAll {
+pub struct ApprovalForAll {
     contract_address: Vec<u8>,
     owner: Vec<u8>,
     operator: Vec<u8>,
     approved: bool,
+}
+
+impl ApprovalForAll {
+    pub fn from_event(contract_address: Address, event: ApprovalForAllEvent) -> Self {
+        Self {
+            contract_address: contract_address.as_bytes().to_vec(),
+            owner: event.owner.as_bytes().to_vec(),
+            approved: event.approved,
+            operator: event.operator.as_bytes().to_vec(),
+        }
+    }
 }
 #[derive(Queryable, Selectable, Insertable)]
 #[diesel(table_name = contract_abis)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub(crate) struct ContractAbi {
     address: Vec<u8>,
-    abi: Option<serde_json::Value>,
+    abi: Option<Value>,
 }
 
-#[derive(Queryable, Selectable, Insertable, AsChangeset)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset, PartialEq, Debug)]
 #[diesel(table_name = nft_approvals)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NftApproval {
@@ -75,7 +88,7 @@ pub struct Nft {
     pub burn_block: Option<i64>,
     pub burn_tx: Option<i64>,
     pub minter: Option<Vec<u8>>,
-    pub json: Option<serde_json::Value>,
+    pub json: Option<Value>,
 }
 
 impl Nft {
