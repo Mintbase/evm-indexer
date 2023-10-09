@@ -1,4 +1,4 @@
-name: Docker Compose Up
+name: Cargo Test
 
 on:
   push:
@@ -18,11 +18,8 @@ jobs:
       - name: Start Docker Compose
         run: docker-compose up -d
 
-      - name: Wait for services to be ready (adjust sleep time as needed)
-        run: sleep 30s
-
-      - name: Runs Tests
-        run: cargo test --verbose
+      - name: Run Tests
+        run: cargo test
 
       - name: Stop Docker Compose
         run: docker-compose down
