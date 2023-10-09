@@ -3,10 +3,10 @@ pub mod db_reader;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dotenv::dotenv;
     use crate::db_reader::diesel::BlockRange;
+    use dotenv::dotenv;
 
-    static TEST_DB_URL: &str = "postgresql://postgres:postgres@localhost:5432/postgres";
+    static TEST_DB_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";
 
     #[test]
     fn e2e_event_retrieval() {
@@ -15,10 +15,11 @@ mod tests {
         let mut pg_client =
             db_reader::diesel::EventSource::new(&db_url).expect("Failed to connect to DB");
         let block = 10_000_246;
-        let transfers: Vec<_> = pg_client.get_events_for_block_range(BlockRange {start: block, end: block + 1}).unwrap();
-        println!("Retrieved {} events at block {block}", transfers.len());
-        for t in transfers {
-            println!("{:?}", t);
-        }
+        assert!(pg_client
+            .get_events_for_block_range(BlockRange {
+                start: block,
+                end: block + 1,
+            })
+            .is_ok());
     }
 }

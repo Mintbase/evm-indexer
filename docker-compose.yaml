@@ -8,11 +8,19 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: arak
+      POSTGRES_DB: postgres
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     volumes:
       - postgres-data:/var/lib/postgresql/data
+
+  store-migration:
+    build:
+      dockerfile: test_db/Dockerfile.migration
+    depends_on:
+      - postgres-db
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres-db:5432/store
 
 volumes:
   postgres-data:

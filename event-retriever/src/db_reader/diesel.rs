@@ -56,7 +56,7 @@ impl EventSource {
         Ok(merge_sorted_iters::<NftEvent>(events))
     }
 
-    fn get_approvals_for_all_for_block_range(
+    pub fn get_approvals_for_all_for_block_range(
         &mut self,
         range: BlockRange,
     ) -> Result<impl Iterator<Item = NftEvent>> {
@@ -70,7 +70,7 @@ impl EventSource {
         }))
     }
 
-    fn get_erc1155_transfers_batch_for_block_range(
+    pub fn get_erc1155_transfers_batch_for_block_range(
         &mut self,
         range: BlockRange,
     ) -> Result<impl Iterator<Item = NftEvent>> {
@@ -110,7 +110,7 @@ impl EventSource {
         }))
     }
 
-    fn get_erc1155_transfers_single_for_block_range(
+    pub fn get_erc1155_transfers_single_for_block_range(
         &mut self,
         range: BlockRange,
     ) -> Result<impl Iterator<Item = NftEvent>> {
@@ -123,7 +123,7 @@ impl EventSource {
             meta: EventMeta::Erc1155TransferSingle(t.into()),
         }))
     }
-    fn get_erc1155_uri_for_block_range(
+    pub fn get_erc1155_uri_for_block_range(
         &mut self,
         range: BlockRange,
     ) -> Result<impl Iterator<Item = NftEvent>> {
@@ -137,7 +137,7 @@ impl EventSource {
         }))
     }
 
-    fn get_erc721_approvals_for_block_range(
+    pub fn get_erc721_approvals_for_block_range(
         &mut self,
         range: BlockRange,
     ) -> Result<impl Iterator<Item = NftEvent>> {
@@ -150,7 +150,7 @@ impl EventSource {
             meta: EventMeta::Erc721Approval(t.into()),
         }))
     }
-    fn get_erc721_transfers_for_block_range(
+    pub fn get_erc721_transfers_for_block_range(
         &mut self,
         range: BlockRange,
     ) -> Result<impl Iterator<Item = NftEvent>> {
@@ -172,7 +172,14 @@ mod tests {
     use ethers::types::{Address, U256};
     use std::str::FromStr;
 
-    static TEST_DB_URL: &str = "postgresql://postgres:postgres@localhost:5432/postgres";
+    static TEST_DB_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";
+
+    fn single_block_range(block: i64) -> BlockRange {
+        BlockRange {
+            start: block,
+            end: block + 1,
+        }
+    }
 
     fn test_client() -> EventSource {
         EventSource::new(TEST_DB_URL).unwrap()
@@ -189,7 +196,7 @@ mod tests {
         // order by cnt desc
         // limit 1;
         let approvals = test_client()
-            .get_approvals_for_all_for_block(10_000_788)
+            .get_approvals_for_all_for_block_range(single_block_range(10_000_788))
             .unwrap();
         assert!(!approvals.collect::<Vec<_>>().is_empty());
     }
@@ -197,26 +204,28 @@ mod tests {
     #[test]
     fn erc1155_transfer_single() {
         let transfer_singles = test_client()
-            .get_erc1155_transfers_single_for_block(10_000_275)
+            .get_erc1155_transfers_single_for_block_range(single_block_range(10_000_275))
             .unwrap();
         assert!(!transfer_singles.collect::<Vec<_>>().is_empty());
     }
     #[test]
     fn erc1155_uri() {
-        let uris = test_client().get_erc1155_uri_for_block(10_000_380).unwrap();
+        let uris = test_client()
+            .get_erc1155_uri_for_block_range(single_block_range(10_000_380))
+            .unwrap();
         assert!(!uris.collect::<Vec<_>>().is_empty());
     }
     #[test]
     fn erc721_approvals() {
         let approvals = test_client()
-            .get_erc721_approvals_for_block(10_000_002)
+            .get_erc721_approvals_for_block_range(single_block_range(10_000_002))
             .unwrap();
         assert!(!approvals.collect::<Vec<_>>().is_empty());
     }
     #[test]
     fn erc721_transfers() {
         let transfers = test_client()
-            .get_erc721_transfers_for_block(1_001_165)
+            .get_erc721_transfers_for_block_range(single_block_range(1_001_165))
             .unwrap();
         assert!(!transfers.collect::<Vec<_>>().is_empty());
     }
@@ -230,7 +239,7 @@ mod tests {
 
         let mut client = EventSource::new(TEST_DB_URL).unwrap();
         let batch_transfers: Vec<_> = client
-            .get_erc1155_transfers_batch_for_block(10086624)
+            .get_erc1155_transfers_batch_for_block_range(single_block_range(10086624))
             .unwrap()
             .collect();
 
@@ -319,8 +328,7 @@ mod tests {
         // Check them out on https://etherscan.io
 
         let mut client = EventSource::new(TEST_DB_URL).unwrap();
-        let block = 10006884;
-        let batch_transfers: Vec<_> = client.get_events_for_block_range(BlockRange {start: block, end: block + 1}).unwrap();
+        let batch_transfers: Vec<_> = client.get_events_for_block(10006884).unwrap();
         assert!(batch_transfers.len() >= 8);
         assert!(is_sorted(batch_transfers.as_slice()))
     }

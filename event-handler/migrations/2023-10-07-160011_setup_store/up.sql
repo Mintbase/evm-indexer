@@ -1,5 +1,3 @@
-CREATE DATABASE store;
--- Connect to store
 CREATE TYPE token_type AS ENUM ('erc20', 'erc721', 'erc1155', 'unknown');
 CREATE TYPE content_flag AS ENUM ('nsfl', 'nsfw', 'illegal');
 CREATE TYPE content_category AS ENUM ( 'sensitive', 'educational', 'art', 'history', 'interactive', 'limited', 'audio', 'video', 'charity');
@@ -16,7 +14,7 @@ CREATE TABLE transactions
 CREATE TABLE token_contracts
 (
     address          bytea primary key,
-    token_type       token_type not null,
+    -- token_type       token_type not null,
     name             text,
     symbol           text,
     decimals         int2, -- Null for Nfts
@@ -55,7 +53,6 @@ CREATE TABLE nfts
 );
 
 -- approvals are cleared on transfer.
-DROP TABLE nft_approvals;
 CREATE TABLE nft_approvals
 (
     contract_address bytea          not null,

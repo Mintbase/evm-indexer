@@ -146,15 +146,16 @@ mod tests {
     use super::*;
     use event_retriever::db_reader::diesel::BlockRange;
 
-    static TEST_SOURCE_URL: &str = "postgresql://postgres:postgres@localhost:5432/postgres";
+    static TEST_SOURCE_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";
     static TEST_STORE_URL: &str = "postgresql://postgres:postgres@localhost:5432/store";
     #[test]
     fn event_processing() {
         let mut handler = EventHandler::new(TEST_SOURCE_URL, TEST_STORE_URL).unwrap();
+        let block = 10_000_000;
         assert!(handler
             .process_events_for_block_range(BlockRange {
-                start: 10_000_000,
-                end: 11_000_000,
+                start: block,
+                end: block + 10,
             })
             .is_ok());
     }

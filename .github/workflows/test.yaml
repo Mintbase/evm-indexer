@@ -1,0 +1,28 @@
+name: Docker Compose Up
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  docker-compose-up:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Start Docker Compose
+        run: docker-compose up -d
+
+      - name: Wait for services to be ready (adjust sleep time as needed)
+        run: sleep 30s
+
+      - name: Runs Tests
+        run: cargo test --verbose
+
+      - name: Stop Docker Compose
+        run: docker-compose down
