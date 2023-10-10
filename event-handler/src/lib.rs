@@ -1,4 +1,4 @@
 // pub mod handler;
-// mod models;
+mod models;
 mod schema;
 // pub mod store;
