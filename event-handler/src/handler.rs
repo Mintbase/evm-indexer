@@ -148,18 +148,26 @@ impl EventHandler {
 mod tests {
     use super::*;
     use event_retriever::db_reader::diesel::BlockRange;
+    use tracing::Level;
 
     static TEST_SOURCE_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";
     static TEST_STORE_URL: &str = "postgresql://postgres:postgres@localhost:5432/store";
     #[test]
+    #[ignore]
     fn event_processing() {
+        let subscriber = tracing_subscriber::FmtSubscriber::builder()
+            .with_max_level(Level::DEBUG)
+            .finish();
+
         let mut handler = EventHandler::new(TEST_SOURCE_URL, TEST_STORE_URL).unwrap();
-        let block = 10_000_000;
-        assert!(handler
-            .process_events_for_block_range(BlockRange {
-                start: block,
-                end: block + 1000,
-            })
-            .is_ok());
+        let block = 10_006_884;
+        tracing::subscriber::with_default(subscriber, || {
+            assert!(handler
+                .process_events_for_block_range(BlockRange {
+                    start: block,
+                    end: block + 100,
+                })
+                .is_ok())
+        });
     }
 }
