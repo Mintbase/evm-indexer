@@ -1,7 +1,7 @@
 use ethers::types::{Address, U256};
 use std::{cmp::Ordering, collections::BinaryHeap, fmt::Debug};
 
-mod conversions;
+pub mod conversions;
 pub(crate) mod db;
 
 #[derive(Debug)]
@@ -40,7 +40,7 @@ pub enum EventMeta {
 }
 
 /// Every Ethereum Event emits these properties
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct EventBase {
     pub block_number: u64,
     pub log_index: u64,
