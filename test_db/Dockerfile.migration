@@ -1,0 +1,21 @@
+FROM rust:latest
+
+RUN apt-get update && apt-get install -y libpq-dev
+
+# Install diesel_cli
+RUN cargo install --debug diesel_cli --no-default-features --features postgres
+
+# Set the working directory to /app
+WORKDIR /app
+
+# Copy the relevant files:
+COPY event-handler/src/schema.rs /app/event-handler/src/
+COPY diesel.toml /app
+COPY event-handler/migrations/ /app/event-handler/migrations/
+
+# This is a cheap hack to wait for postres to be ready:
+# Could also use https://github.com/ufoscout/docker-compose-wait
+RUN sleep 10
+
+# Run the migrations
+CMD ["diesel", "migration", "run"]
