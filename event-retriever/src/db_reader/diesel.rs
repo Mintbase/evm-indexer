@@ -15,14 +15,20 @@ use crate::db_reader::{
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, sql_query, sql_types::BigInt, Connection, RunQueryDsl};
 
-pub struct DieselClient {
+#[derive(Clone, Copy, Debug)]
+pub struct BlockRange {
+    pub start: i64,
+    pub end: i64,
+}
+
+pub struct EventSource {
     client: PgConnection,
 }
 
-impl DieselClient {
+impl EventSource {
     pub fn new(connection: &str) -> Result<Self> {
         Ok(Self {
-            client: DieselClient::establish_connection(connection)?,
+            client: Self::establish_connection(connection)?,
         })
     }
 
@@ -31,23 +37,32 @@ impl DieselClient {
     }
 
     pub fn get_events_for_block(&mut self, block: i64) -> Result<Vec<NftEvent>> {
+        self.get_events_for_block_range(BlockRange {
+            start: block,
+            end: block + 1,
+        })
+    }
+
+    pub fn get_events_for_block_range(&mut self, range: BlockRange) -> Result<Vec<NftEvent>> {
         let events = vec![
-            Box::new(self.get_approvals_for_all_for_block(block)?)
+            Box::new(self.get_approvals_for_all_for_block_range(range)?)
                 as Box<dyn Iterator<Item = NftEvent>>,
-            Box::new(self.get_erc1155_transfers_batch_for_block(block)?),
-            Box::new(self.get_erc1155_transfers_single_for_block(block)?),
-            Box::new(self.get_erc1155_uri_for_block(block)?),
-            Box::new(self.get_erc721_approvals_for_block(block)?),
-            Box::new(self.get_erc721_transfers_for_block(block)?),
+            Box::new(self.get_erc1155_transfers_batch_for_block_range(range)?),
+            Box::new(self.get_erc1155_transfers_single_for_block_range(range)?),
+            Box::new(self.get_erc1155_uri_for_block_range(range)?),
+            Box::new(self.get_erc721_approvals_for_block_range(range)?),
+            Box::new(self.get_erc721_transfers_for_block_range(range)?),
         ];
         Ok(merge_sorted_iters::<NftEvent>(events))
     }
-    fn get_approvals_for_all_for_block(
+
+    pub fn get_approvals_for_all_for_block_range(
         &mut self,
-        block: i64,
+        range: BlockRange,
     ) -> Result<impl Iterator<Item = NftEvent>> {
         let events: Vec<DbApprovalForAll> = approval_for_all
-            .filter(schema::approval_for_all::dsl::block_number.eq(&block))
+            .filter(schema::approval_for_all::dsl::block_number.ge(&range.start))
+            .filter(schema::approval_for_all::dsl::block_number.lt(&range.end))
             .load(&mut self.client)?;
         Ok(events.into_iter().map(|t| NftEvent {
             base: t.event_base(),
@@ -55,9 +70,9 @@ impl DieselClient {
         }))
     }
 
-    fn get_erc1155_transfers_batch_for_block(
+    pub fn get_erc1155_transfers_batch_for_block_range(
         &mut self,
-        block: i64,
+        range: BlockRange,
     ) -> Result<impl Iterator<Item = NftEvent>> {
         let records: Vec<_> = sql_query(
             "
@@ -80,11 +95,13 @@ impl DieselClient {
             ON tb.block_number = tbv.block_number
             AND tb.log_index = tbv.log_index
             AND tb.transaction_index = tbv.transaction_index
-        WHERE tb.block_number = $1
+        WHERE tb.block_number >= $1
+        AND tb.block_number < $2
         AND tbi.array_index = tbv.array_index
         GROUP BY tb.block_number, tb.log_index, tb.transaction_index",
         )
-        .bind::<BigInt, _>(block)
+        .bind::<BigInt, _>(range.start)
+        .bind::<BigInt, _>(range.end)
         .load::<DbErc1155TransferBatch>(&mut self.client)?;
 
         Ok(records.into_iter().map(|t| NftEvent {
@@ -93,21 +110,26 @@ impl DieselClient {
         }))
     }
 
-    fn get_erc1155_transfers_single_for_block(
+    pub fn get_erc1155_transfers_single_for_block_range(
         &mut self,
-        block: i64,
+        range: BlockRange,
     ) -> Result<impl Iterator<Item = NftEvent>> {
         let events: Vec<DbErc1155TransferSingle> = erc1155_transfer_single
-            .filter(schema::erc1155_transfer_single::dsl::block_number.eq(&block))
+            .filter(schema::erc1155_transfer_single::dsl::block_number.ge(&range.start))
+            .filter(schema::erc1155_transfer_single::dsl::block_number.lt(&range.end))
             .load(&mut self.client)?;
         Ok(events.into_iter().map(|t| NftEvent {
             base: t.event_base(),
             meta: EventMeta::Erc1155TransferSingle(t.into()),
         }))
     }
-    fn get_erc1155_uri_for_block(&mut self, block: i64) -> Result<impl Iterator<Item = NftEvent>> {
+    pub fn get_erc1155_uri_for_block_range(
+        &mut self,
+        range: BlockRange,
+    ) -> Result<impl Iterator<Item = NftEvent>> {
         let events: Vec<DbErc1155Uri> = erc1155_uri
-            .filter(schema::erc1155_uri::dsl::block_number.eq(&block))
+            .filter(schema::erc1155_uri::dsl::block_number.ge(&range.start))
+            .filter(schema::erc1155_uri::dsl::block_number.lt(&range.end))
             .load(&mut self.client)?;
         Ok(events.into_iter().map(|t| NftEvent {
             base: t.event_base(),
@@ -115,24 +137,26 @@ impl DieselClient {
         }))
     }
 
-    fn get_erc721_approvals_for_block(
+    pub fn get_erc721_approvals_for_block_range(
         &mut self,
-        block: i64,
+        range: BlockRange,
     ) -> Result<impl Iterator<Item = NftEvent>> {
         let events: Vec<DbErc721Approval> = erc721_approval
-            .filter(schema::erc721_approval::dsl::block_number.eq(&block))
+            .filter(schema::erc721_approval::dsl::block_number.ge(&range.start))
+            .filter(schema::erc721_approval::dsl::block_number.lt(&range.end))
             .load(&mut self.client)?;
         Ok(events.into_iter().map(|t| NftEvent {
             base: t.event_base(),
             meta: EventMeta::Erc721Approval(t.into()),
         }))
     }
-    fn get_erc721_transfers_for_block(
+    pub fn get_erc721_transfers_for_block_range(
         &mut self,
-        block: i64,
+        range: BlockRange,
     ) -> Result<impl Iterator<Item = NftEvent>> {
         let db_transfers: Vec<DbErc721Transfer> = erc721_transfer
-            .filter(schema::erc721_transfer::dsl::block_number.eq(&block))
+            .filter(schema::erc721_transfer::dsl::block_number.ge(&range.start))
+            .filter(schema::erc721_transfer::dsl::block_number.lt(&range.end))
             .load(&mut self.client)?;
         Ok(db_transfers.into_iter().map(|t| NftEvent {
             base: t.event_base(),
@@ -148,10 +172,17 @@ mod tests {
     use ethers::types::{Address, U256};
     use std::str::FromStr;
 
-    static TEST_DB_URL: &str = "postgresql://postgres:postgres@localhost:5432/postgres";
+    static TEST_DB_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";
 
-    fn test_client() -> DieselClient {
-        DieselClient::new(TEST_DB_URL).unwrap()
+    fn single_block_range(block: i64) -> BlockRange {
+        BlockRange {
+            start: block,
+            end: block + 1,
+        }
+    }
+
+    fn test_client() -> EventSource {
+        EventSource::new(TEST_DB_URL).unwrap()
     }
 
     fn address(val: &str) -> Address {
@@ -165,7 +196,7 @@ mod tests {
         // order by cnt desc
         // limit 1;
         let approvals = test_client()
-            .get_approvals_for_all_for_block(10_000_788)
+            .get_approvals_for_all_for_block_range(single_block_range(10_000_788))
             .unwrap();
         assert!(!approvals.collect::<Vec<_>>().is_empty());
     }
@@ -173,26 +204,28 @@ mod tests {
     #[test]
     fn erc1155_transfer_single() {
         let transfer_singles = test_client()
-            .get_erc1155_transfers_single_for_block(10_000_275)
+            .get_erc1155_transfers_single_for_block_range(single_block_range(10_000_275))
             .unwrap();
         assert!(!transfer_singles.collect::<Vec<_>>().is_empty());
     }
     #[test]
     fn erc1155_uri() {
-        let uris = test_client().get_erc1155_uri_for_block(10_000_380).unwrap();
+        let uris = test_client()
+            .get_erc1155_uri_for_block_range(single_block_range(10_000_380))
+            .unwrap();
         assert!(!uris.collect::<Vec<_>>().is_empty());
     }
     #[test]
     fn erc721_approvals() {
         let approvals = test_client()
-            .get_erc721_approvals_for_block(10_000_002)
+            .get_erc721_approvals_for_block_range(single_block_range(10_000_002))
             .unwrap();
         assert!(!approvals.collect::<Vec<_>>().is_empty());
     }
     #[test]
     fn erc721_transfers() {
         let transfers = test_client()
-            .get_erc721_transfers_for_block(1_001_165)
+            .get_erc721_transfers_for_block_range(single_block_range(1_001_165))
             .unwrap();
         assert!(!transfers.collect::<Vec<_>>().is_empty());
     }
@@ -204,9 +237,9 @@ mod tests {
         // 0x0d5333fc99ca227a2126c8d0ff3193ba1c619fbeaeb330098dc705e646890ca1
         // Check them out on https://etherscan.io
 
-        let mut client = DieselClient::new(TEST_DB_URL).unwrap();
+        let mut client = EventSource::new(TEST_DB_URL).unwrap();
         let batch_transfers: Vec<_> = client
-            .get_erc1155_transfers_batch_for_block(10086624)
+            .get_erc1155_transfers_batch_for_block_range(single_block_range(10086624))
             .unwrap()
             .collect();
 
@@ -294,7 +327,7 @@ mod tests {
         // Erc721Approval, Erc1155TransferBatch, Erc1155TransferSingle and ApprovalForAll
         // Check them out on https://etherscan.io
 
-        let mut client = DieselClient::new(TEST_DB_URL).unwrap();
+        let mut client = EventSource::new(TEST_DB_URL).unwrap();
         let batch_transfers: Vec<_> = client.get_events_for_block(10006884).unwrap();
         assert!(batch_transfers.len() >= 8);
         assert!(is_sorted(batch_transfers.as_slice()))
