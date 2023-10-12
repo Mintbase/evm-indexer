@@ -13,9 +13,9 @@ COPY event-handler/src/schema.rs /app/event-handler/src/
 COPY diesel.toml /app
 COPY event-handler/migrations/ /app/event-handler/migrations/
 
-# This is a cheap hack to wait for postres to be ready:
-# Could also use https://github.com/ufoscout/docker-compose-wait
-RUN sleep 10
+# Wait for postgres to be ready.
+COPY test_db/wait-for-it.sh /app
+RUN chmod +x /app/wait-for-it.sh
 
 # Run the migrations
-CMD ["diesel", "migration", "run"]
+CMD ["./wait-for-it.sh", "postgres-db:5432", "--", "diesel", "migration", "run"]
