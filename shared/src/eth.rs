@@ -13,6 +13,13 @@ impl Address {
     pub fn zero() -> Self {
         Self(H160::zero())
     }
+
+    /// ! WARNING! This function is meant to be used by Diesel
+    /// for Ethereum address fields encoded in postgres
+    /// as BYTEA type (since there is no fixed length type)
+    pub fn expect_from(value: Vec<u8>) -> Self {
+        Self::try_from(value).expect("address from vec")
+    }
 }
 
 impl From<Address> for Vec<u8> {

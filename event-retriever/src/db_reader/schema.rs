@@ -14,9 +14,9 @@ diesel::table! {
         log_index -> Int8,
         transaction_index -> Int8,
         address -> Bytea,
-        owner_0 -> Nullable<Bytea>,
-        operator_1 -> Nullable<Bytea>,
-        approved_2 -> Nullable<Bool>,
+        owner_0 -> Bytea,
+        operator_1 -> Bytea,
+        approved_2 -> Bool,
     }
 }
 
@@ -26,9 +26,9 @@ diesel::table! {
         log_index -> Int8,
         transaction_index -> Int8,
         address -> Bytea,
-        operator_0 -> Nullable<Bytea>,
-        from_1 -> Nullable<Bytea>,
-        to_2 -> Nullable<Bytea>,
+        operator_0 -> Bytea,
+        from_1 -> Bytea,
+        to_2 -> Bytea,
     }
 }
 
@@ -39,7 +39,7 @@ diesel::table! {
         transaction_index -> Int8,
         address -> Bytea,
         array_index -> Int8,
-        ids_0 -> Nullable<Numeric>,
+        ids_0 -> Numeric,
     }
 }
 
@@ -50,7 +50,7 @@ diesel::table! {
         transaction_index -> Int8,
         address -> Bytea,
         array_index -> Int8,
-        values_0 -> Nullable<Numeric>,
+        values_0 -> Numeric,
     }
 }
 
@@ -60,11 +60,11 @@ diesel::table! {
         log_index -> Int8,
         transaction_index -> Int8,
         address -> Bytea,
-        operator_0 -> Nullable<Bytea>,
-        from_1 -> Nullable<Bytea>,
-        to_2 -> Nullable<Bytea>,
-        id_3 -> Nullable<Numeric>,
-        value_4 -> Nullable<Numeric>,
+        operator_0 -> Bytea,
+        from_1 -> Bytea,
+        to_2 -> Bytea,
+        id_3 -> Numeric,
+        value_4 -> Numeric,
     }
 }
 
@@ -74,8 +74,8 @@ diesel::table! {
         log_index -> Int8,
         transaction_index -> Int8,
         address -> Bytea,
-        value_0 -> Nullable<Text>,
-        id_1 -> Nullable<Numeric>,
+        value_0 -> Text,
+        id_1 -> Numeric,
     }
 }
 
@@ -85,9 +85,9 @@ diesel::table! {
         log_index -> Int8,
         transaction_index -> Int8,
         address -> Bytea,
-        owner_0 -> Nullable<Bytea>,
-        approved_1 -> Nullable<Bytea>,
-        tokenid_2 -> Nullable<Numeric>,
+        owner_0 -> Bytea,
+        approved_1 -> Bytea,
+        tokenid_2 -> Numeric,
     }
 }
 
@@ -97,9 +97,9 @@ diesel::table! {
         log_index -> Int8,
         transaction_index -> Int8,
         address -> Bytea,
-        from_0 -> Nullable<Bytea>,
-        to_1 -> Nullable<Bytea>,
-        tokenid_2 -> Nullable<Numeric>,
+        from_0 -> Bytea,
+        to_1 -> Bytea,
+        tokenid_2 -> Numeric,
     }
 }
 
