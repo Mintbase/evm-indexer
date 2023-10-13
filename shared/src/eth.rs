@@ -1,6 +1,9 @@
+use bigdecimal::{BigDecimal, Num};
+use ethers::{
+    abi::ethereum_types::FromDecStrErr,
+    types::{H160, U256 as Uint256},
+};
 use std::str::FromStr;
-
-use ethers::types::H160;
 
 /// An address. Can be an EOA or a smart contract address.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -74,5 +77,35 @@ impl From<[u8; 20]> for Address {
 impl From<Address> for H160 {
     fn from(value: Address) -> Self {
         value.0
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct U256(pub Uint256);
+
+impl From<BigDecimal> for U256 {
+    fn from(val: BigDecimal) -> Self {
+        U256(Uint256::from_dec_str(&val.to_string()).expect("Invalid value"))
+    }
+}
+
+impl From<U256> for BigDecimal {
+    fn from(value: U256) -> Self {
+        BigDecimal::from_str_radix(&value.0.to_string(), 10).unwrap()
+    }
+}
+
+impl From<u64> for U256 {
+    fn from(value: u64) -> Self {
+        U256(Uint256::from(value))
+    }
+}
+
+impl U256 {
+    pub fn from_dec_str(value: &str) -> Result<Self, FromDecStrErr> {
+        match Uint256::from_dec_str(value) {
+            Ok(res) => Ok(U256(res)),
+            Err(err) => Err(err),
+        }
     }
 }

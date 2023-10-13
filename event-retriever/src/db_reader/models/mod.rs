@@ -1,5 +1,4 @@
-use ethers::types::U256;
-use shared::eth::Address;
+use shared::eth::{Address, U256};
 use std::{cmp::Ordering, collections::BinaryHeap, fmt::Debug};
 pub(crate) mod db;
 

@@ -7,8 +7,7 @@ use crate::db_reader::{
 };
 use bigdecimal::BigDecimal;
 use diesel::{Queryable, QueryableByName, Selectable};
-use ethers::types::U256;
-use shared::{conversions::*, eth::Address};
+use shared::eth::Address;
 
 pub trait EvmEventTable {
     fn block_number(&self) -> u64;
@@ -75,8 +74,8 @@ impl From<DbErc1155TransferBatch> for Erc1155TransferBatch {
             operator: val.operator.try_into().expect("operator"),
             from: val.from.try_into().expect("from"),
             to: val.to.try_into().expect("to"),
-            ids: val.ids.iter().map(u256_from_big_decimal).collect(),
-            values: val.values.iter().map(u256_from_big_decimal).collect(),
+            ids: val.ids.into_iter().map(|v| v.into()).collect(),
+            values: val.values.into_iter().map(|v| v.into()).collect(),
         }
     }
 }
@@ -102,10 +101,8 @@ impl From<DbErc1155TransferSingle> for Erc1155TransferSingle {
             operator: val.operator_0.try_into().expect("unexpected Null"),
             from: val.from_1.try_into().expect("unexpected Null"),
             to: val.to_2.try_into().expect("unexpected Null"),
-            id: U256::from_dec_str(&val.id_3.expect("Null token_id2").to_string())
-                .expect("Invalid token_id"),
-            value: U256::from_dec_str(&val.value_4.expect("Null token_id2").to_string())
-                .expect("Invalid value"),
+            id: val.id_3.expect("Null token_id2").into(),
+            value: val.value_4.expect("Null token_id2").into(),
         }
     }
 }
@@ -125,8 +122,7 @@ pub(crate) struct DbErc1155Uri {
 impl From<DbErc1155Uri> for Erc1155Uri {
     fn from(val: DbErc1155Uri) -> Self {
         Erc1155Uri {
-            id: U256::from_dec_str(&val.id_1.expect("Null id_1").to_string())
-                .expect("Invalid value"),
+            id: val.id_1.expect("Null id_1").into(),
             value: val.value_0.expect("Null value_0"),
         }
     }
@@ -150,8 +146,7 @@ impl From<DbErc721Approval> for Erc721Approval {
         Erc721Approval {
             owner: val.owner_0.try_into().expect("unexpected Null"),
             approved: val.approved_1.try_into().expect("unexpected Null"),
-            id: U256::from_dec_str(&val.tokenid_2.expect("Null tokenid_2").to_string())
-                .expect("Invalid value"),
+            id: val.tokenid_2.expect("Null tokenid_2").into(),
         }
     }
 }
@@ -176,8 +171,7 @@ impl From<DbErc721Transfer> for Erc721Transfer {
         Erc721Transfer {
             from: val.from_0.try_into().expect("Null from_0"),
             to: val.to_1.try_into().expect("Null to_1"),
-            token_id: U256::from_dec_str(&val.tokenid_2.expect("Null token_id2").to_string())
-                .expect("Invalid token_id"),
+            token_id: val.tokenid_2.expect("Null token_id2").into(),
         }
     }
 }
@@ -213,6 +207,7 @@ impl_evm_event_table!(DbErc721Transfer);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use shared::eth::U256;
     use std::panic;
 
     fn n_addresses(n: u64) -> Vec<Address> {

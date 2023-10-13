@@ -1,12 +1,10 @@
 use crate::schema::*;
-use bigdecimal::{BigDecimal, Num};
+use bigdecimal::BigDecimal;
 use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
 use diesel::{AsChangeset, Insertable, Queryable, Selectable};
-use ethers::types::U256;
 use event_retriever::db_reader::models::EventBase;
 use serde_json::Value;
-use shared::conversions::*;
-use shared::eth::Address;
+use shared::eth::{Address, U256};
 
 #[derive(Debug)]
 pub struct NftId {
@@ -20,7 +18,7 @@ impl NftId {
     }
 
     pub fn db_id(&self) -> BigDecimal {
-        BigDecimal::from_str_radix(&self.token_id.to_string(), 10).unwrap()
+        self.token_id.into()
     }
 }
 
@@ -65,7 +63,7 @@ impl Nft {
     pub fn build_from(base: &EventBase, nft_id: &NftId) -> Self {
         Self {
             contract_address: nft_id.address.into(),
-            token_id: big_decimal_from_u256(&nft_id.token_id),
+            token_id: nft_id.token_id.into(),
             owner: vec![],
             last_transfer_block: None,
             last_transfer_tx: None,
@@ -174,7 +172,7 @@ mod tests {
             Nft::build_from(&base, &nft_id),
             Nft {
                 contract_address: nft_id.address.into(),
-                token_id: big_decimal_from_u256(&nft_id.token_id),
+                token_id: nft_id.token_id.into(),
                 owner: vec![],
                 last_transfer_block: None,
                 last_transfer_tx: None,
