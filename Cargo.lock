@@ -1098,7 +1098,6 @@ dependencies = [
  "anyhow",
  "bigdecimal",
  "diesel",
- "ethers",
  "event-retriever",
  "serde",
  "serde_json",
@@ -1115,7 +1114,6 @@ dependencies = [
  "bigdecimal",
  "diesel",
  "dotenv",
- "ethers",
  "shared",
 ]
 
