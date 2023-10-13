@@ -23,7 +23,8 @@ jobs:
         run: docker-compose up -d
 
       - name: Run Tests
-        run: cargo test
+        # This is so Database tests don't run in parallel!
+        run: cargo test -- --test-threads 1
 
       - name: Stop Docker Compose
         run: docker-compose down

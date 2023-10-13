@@ -1,7 +1,5 @@
-use ethers::types::{Address, U256};
+use shared::eth::{Address, U256};
 use std::{cmp::Ordering, collections::BinaryHeap, fmt::Debug};
-
-pub mod conversions;
 pub(crate) mod db;
 
 #[derive(Debug)]
