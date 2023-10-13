@@ -169,7 +169,8 @@ impl EventSource {
 mod tests {
     use super::*;
     use crate::db_reader::models::{Erc1155TransferBatch, EventBase};
-    use ethers::types::{Address, U256};
+    use ethers::types::U256;
+    use shared::eth::Address;
     use std::str::FromStr;
 
     static TEST_DB_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";

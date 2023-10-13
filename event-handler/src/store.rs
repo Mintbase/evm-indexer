@@ -4,8 +4,9 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection, RunQueryDsl};
-use ethers::types::{Address, U256};
-use event_retriever::db_reader::models::{conversions::address_to_vec, EventBase};
+use ethers::types::U256;
+use event_retriever::db_reader::models::EventBase;
+use shared::eth::Address;
 
 pub struct DataStore {
     client: PgConnection,
@@ -82,7 +83,7 @@ impl DataStore {
 
     pub fn load_contract(&mut self, address: Address) -> Option<TokenContract> {
         let contract: Option<TokenContract> = token_contracts::dsl::token_contracts
-            .filter(token_contracts::address.eq(&address.as_bytes().to_vec()))
+            .filter(token_contracts::address.eq::<&Vec<u8>>(&address.into()))
             .first(&mut self.client)
             .optional()
             .expect("load_contract");
@@ -111,10 +112,10 @@ impl DataStore {
     }
 
     pub fn set_approval(&mut self, token: &NftId, approved: Address) -> Result<usize> {
-        let set_value = if approved == Address::zero() {
+        let set_value: Option<Vec<u8>> = if approved == Address::zero() {
             None
         } else {
-            Some(address_to_vec(approved))
+            Some(approved.into())
         };
 
         let update = diesel::update(
@@ -144,8 +145,9 @@ mod tests {
         store::{DataStore, NftId},
     };
     use diesel::RunQueryDsl;
-    use ethers::types::{Address, U256};
+    use ethers::types::U256;
     use event_retriever::db_reader::models::EventBase;
+    use shared::eth::Address;
 
     static TEST_STORE_URL: &str = "postgresql://postgres:postgres@localhost:5432/store";
 
@@ -175,21 +177,25 @@ mod tests {
         }
     }
 
+    fn test_event_base() -> EventBase {
+        EventBase {
+            block_number: 1,
+            log_index: 2,
+            transaction_index: 3,
+            contract_address: Address::from(1),
+        }
+    }
+
     #[test]
     fn set_and_clear_approval() {
         let mut store = get_new_store();
-        let contract_address = Address::from_low_u64_be(1);
+        let contract_address = Address::from(1);
         let token = NftId {
             address: contract_address,
             token_id: U256::from(123),
         };
         // Nft Record doesn't exist
-        assert_eq!(
-            store
-                .set_approval(&token, Address::from_low_u64_be(3))
-                .unwrap(),
-            0
-        );
+        assert_eq!(store.set_approval(&token, Address::from(3)).unwrap(), 0);
 
         // nft must exist before approval
         let _ = store.load_or_initialize_nft(
@@ -202,29 +208,17 @@ mod tests {
             &token,
         );
 
-        assert_eq!(
-            store
-                .set_approval(&token, Address::from_low_u64_be(3))
-                .unwrap(),
-            1
-        );
+        assert_eq!(store.set_approval(&token, Address::from(3)).unwrap(), 1);
         assert_eq!(store.clear_approval(&token).unwrap(), 1);
     }
 
     #[test]
     fn save_and_load_nft() {
         let mut store = get_new_store();
-
-        let contract_address = Address::from_low_u64_be(1);
+        let base = test_event_base();
         let token = NftId {
-            address: contract_address,
+            address: base.contract_address,
             token_id: U256::from(123),
-        };
-        let base = EventBase {
-            block_number: 1,
-            log_index: 2,
-            transaction_index: 3,
-            contract_address,
         };
         let nft = Nft::build_from(&base, &token);
         assert!(store.save_nft(&nft).is_ok());
@@ -235,17 +229,10 @@ mod tests {
     #[test]
     fn load_or_initialize_nft() {
         let mut store = get_new_store();
-
-        let contract_address = Address::from_low_u64_be(1);
+        let base = test_event_base();
         let token = NftId {
-            address: contract_address,
+            address: base.contract_address,
             token_id: U256::from(123),
-        };
-        let base = EventBase {
-            block_number: 1,
-            log_index: 2,
-            transaction_index: 3,
-            contract_address,
         };
         assert!(store.load_or_initialize_nft(&base, &token).is_ok());
     }
@@ -253,27 +240,17 @@ mod tests {
     #[test]
     fn save_and_load_contract() {
         let mut store = get_new_store();
-        let contract_address = Address::from_low_u64_be(1);
-        let base = EventBase {
-            block_number: 1,
-            log_index: 2,
-            transaction_index: 3,
-            contract_address,
-        };
+        let base = test_event_base();
         let contract = TokenContract::from_event_base(&base);
         assert!(store.save_contract(&contract).is_ok());
-        assert!(store.load_contract(contract_address).is_some());
+        assert!(store.load_contract(base.contract_address).is_some());
     }
 
     #[test]
     fn load_or_initialize_contract() {
         let mut store = get_new_store();
-        let base = EventBase {
-            block_number: 1,
-            log_index: 2,
-            transaction_index: 3,
-            contract_address: Address::from_low_u64_be(1),
-        };
-        assert!(store.load_or_initialize_contract(&base).is_ok());
+        assert!(store
+            .load_or_initialize_contract(&test_event_base())
+            .is_ok());
     }
 }

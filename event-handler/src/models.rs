@@ -2,9 +2,11 @@ use crate::schema::*;
 use bigdecimal::{BigDecimal, Num};
 use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
 use diesel::{AsChangeset, Insertable, Queryable, Selectable};
-use ethers::types::{Address, U256};
-use event_retriever::db_reader::models::{conversions::*, EventBase};
+use ethers::types::U256;
+use event_retriever::db_reader::models::EventBase;
 use serde_json::Value;
+use shared::conversions::*;
+use shared::eth::Address;
 
 #[derive(Debug)]
 pub struct NftId {
@@ -14,7 +16,7 @@ pub struct NftId {
 
 impl NftId {
     pub fn db_address(&self) -> Vec<u8> {
-        self.address.as_bytes().to_vec()
+        self.address.into()
     }
 
     pub fn db_id(&self) -> BigDecimal {
@@ -62,7 +64,7 @@ pub struct Nft {
 impl Nft {
     pub fn build_from(base: &EventBase, nft_id: &NftId) -> Self {
         Self {
-            contract_address: address_to_vec(nft_id.address),
+            contract_address: nft_id.address.into(),
             token_id: big_decimal_from_u256(&nft_id.token_id),
             owner: vec![],
             last_transfer_block: None,
@@ -102,7 +104,7 @@ pub struct TokenContract {
 impl TokenContract {
     pub fn from_event_base(event: &EventBase) -> Self {
         Self {
-            address: address_to_vec(event.contract_address),
+            address: event.contract_address.into(),
             // TODO - find these an put them.
             name: None,
             symbol: None,
@@ -132,7 +134,7 @@ mod tests {
 
     #[test]
     fn token_contract_impls() {
-        let contract_address = Address::from_low_u64_be(1);
+        let contract_address = Address::from(1);
         let base = EventBase {
             block_number: 1,
             log_index: 2,
@@ -143,7 +145,7 @@ mod tests {
         assert_eq!(
             TokenContract::from_event_base(&base),
             TokenContract {
-                address: address_to_vec(base.contract_address),
+                address: base.contract_address.into(),
                 name: None,
                 symbol: None,
                 decimals: None,
@@ -156,7 +158,7 @@ mod tests {
 
     #[test]
     fn nft_impls() {
-        let contract_address = Address::from_low_u64_be(1);
+        let contract_address = Address::from(1);
         let base = EventBase {
             block_number: 1,
             log_index: 2,
@@ -171,7 +173,7 @@ mod tests {
         assert_eq!(
             Nft::build_from(&base, &nft_id),
             Nft {
-                contract_address: address_to_vec(nft_id.address),
+                contract_address: nft_id.address.into(),
                 token_id: big_decimal_from_u256(&nft_id.token_id),
                 owner: vec![],
                 last_transfer_block: None,
