@@ -136,6 +136,10 @@ impl DataStore {
             _ => unreachable!("nft table primary key error"),
         }
     }
+
+    pub fn clear_approval(&mut self, token: &NftId) -> Result<usize> {
+        self.set_approval(token, Address::zero())
+    }
 }
 
 #[cfg(test)]
@@ -209,6 +213,7 @@ mod tests {
         );
 
         assert_eq!(store.set_approval(&token, Address::from(3)).unwrap(), 1);
+        assert_eq!(store.clear_approval(&token).unwrap(), 1);
     }
 
     #[test]
