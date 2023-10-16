@@ -168,7 +168,6 @@ impl EventSource {
 #[cfg(test)]
 mod tests {
     use std::str::FromStr;
-
     use super::*;
     use crate::db_reader::models::ApprovalForAll;
     use crate::db_reader::models::Erc721Transfer;
