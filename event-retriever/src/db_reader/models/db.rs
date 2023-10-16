@@ -7,7 +7,7 @@ use crate::db_reader::{
 };
 use bigdecimal::BigDecimal;
 use diesel::{Queryable, QueryableByName, Selectable};
-use shared::eth::Address;
+use shared::eth::{Address, U256};
 
 pub trait EvmEventTable {
     fn block_number(&self) -> u64;
@@ -33,17 +33,17 @@ pub(crate) struct DbApprovalForAll {
     log_index: i64,
     transaction_index: i64,
     address: Vec<u8>,
-    owner_0: Option<Vec<u8>>,
-    operator_1: Option<Vec<u8>>,
-    approved_2: Option<bool>,
+    owner_0: Vec<u8>,
+    operator_1: Vec<u8>,
+    approved_2: bool,
 }
 
 impl From<DbApprovalForAll> for ApprovalForAll {
     fn from(val: DbApprovalForAll) -> Self {
         ApprovalForAll {
-            owner: val.owner_0.try_into().expect("unexpected Null"),
-            operator: val.operator_1.try_into().expect("unexpected Null"),
-            approved: val.approved_2.expect("unexpected None"),
+            owner: Address::expect_from(val.owner_0),
+            operator: Address::expect_from(val.operator_1),
+            approved: val.approved_2,
         }
     }
 }
@@ -71,11 +71,11 @@ pub(crate) struct DbErc1155TransferBatch {
 impl From<DbErc1155TransferBatch> for Erc1155TransferBatch {
     fn from(val: DbErc1155TransferBatch) -> Self {
         Erc1155TransferBatch {
-            operator: val.operator.try_into().expect("operator"),
-            from: val.from.try_into().expect("from"),
-            to: val.to.try_into().expect("to"),
-            ids: val.ids.into_iter().map(|v| v.into()).collect(),
-            values: val.values.into_iter().map(|v| v.into()).collect(),
+            operator: Address::expect_from(val.operator),
+            from: Address::expect_from(val.from),
+            to: Address::expect_from(val.to),
+            ids: val.ids.into_iter().map(U256::from).collect(),
+            values: val.values.into_iter().map(U256::from).collect(),
         }
     }
 }
@@ -88,21 +88,21 @@ pub(crate) struct DbErc1155TransferSingle {
     log_index: i64,
     transaction_index: i64,
     address: Vec<u8>,
-    operator_0: Option<Vec<u8>>,
-    from_1: Option<Vec<u8>>,
-    to_2: Option<Vec<u8>>,
-    id_3: Option<BigDecimal>,
-    value_4: Option<BigDecimal>,
+    operator_0: Vec<u8>,
+    from_1: Vec<u8>,
+    to_2: Vec<u8>,
+    id_3: BigDecimal,
+    value_4: BigDecimal,
 }
 
 impl From<DbErc1155TransferSingle> for Erc1155TransferSingle {
     fn from(val: DbErc1155TransferSingle) -> Self {
         Erc1155TransferSingle {
-            operator: val.operator_0.try_into().expect("unexpected Null"),
-            from: val.from_1.try_into().expect("unexpected Null"),
-            to: val.to_2.try_into().expect("unexpected Null"),
-            id: val.id_3.expect("Null token_id2").into(),
-            value: val.value_4.expect("Null token_id2").into(),
+            operator: Address::expect_from(val.operator_0),
+            from: Address::expect_from(val.from_1),
+            to: Address::expect_from(val.to_2),
+            id: val.id_3.into(),
+            value: val.value_4.into(),
         }
     }
 }
@@ -115,15 +115,15 @@ pub(crate) struct DbErc1155Uri {
     log_index: i64,
     transaction_index: i64,
     address: Vec<u8>,
-    value_0: Option<String>,
-    id_1: Option<BigDecimal>,
+    value_0: String,
+    id_1: BigDecimal,
 }
 
 impl From<DbErc1155Uri> for Erc1155Uri {
     fn from(val: DbErc1155Uri) -> Self {
         Erc1155Uri {
-            id: val.id_1.expect("Null id_1").into(),
-            value: val.value_0.expect("Null value_0"),
+            id: val.id_1.into(),
+            value: val.value_0,
         }
     }
 }
@@ -136,17 +136,17 @@ pub(crate) struct DbErc721Approval {
     log_index: i64,
     transaction_index: i64,
     address: Vec<u8>,
-    owner_0: Option<Vec<u8>>,
-    approved_1: Option<Vec<u8>>,
-    tokenid_2: Option<BigDecimal>,
+    owner_0: Vec<u8>,
+    approved_1: Vec<u8>,
+    tokenid_2: BigDecimal,
 }
 
 impl From<DbErc721Approval> for Erc721Approval {
     fn from(val: DbErc721Approval) -> Self {
         Erc721Approval {
-            owner: val.owner_0.try_into().expect("unexpected Null"),
-            approved: val.approved_1.try_into().expect("unexpected Null"),
-            id: val.tokenid_2.expect("Null tokenid_2").into(),
+            owner: Address::expect_from(val.owner_0),
+            approved: Address::expect_from(val.approved_1),
+            id: val.tokenid_2.into(),
         }
     }
 }
@@ -159,19 +159,19 @@ pub(crate) struct DbErc721Transfer {
     log_index: i64,
     transaction_index: i64,
     address: Vec<u8>,
-    from_0: Option<Vec<u8>>,
-    to_1: Option<Vec<u8>>,
+    from_0: Vec<u8>,
+    to_1: Vec<u8>,
     // Had to install bigdecimal with serde feature and fix version to 0.3.1
     // https://docs.rs/bigdecimal/0.3.1/bigdecimal/index.html
-    tokenid_2: Option<BigDecimal>,
+    tokenid_2: BigDecimal,
 }
 
 impl From<DbErc721Transfer> for Erc721Transfer {
     fn from(val: DbErc721Transfer) -> Self {
         Erc721Transfer {
-            from: val.from_0.try_into().expect("Null from_0"),
-            to: val.to_1.try_into().expect("Null to_1"),
-            token_id: val.tokenid_2.expect("Null token_id2").into(),
+            from: Address::expect_from(val.from_0),
+            to: Address::expect_from(val.to_1),
+            token_id: val.tokenid_2.into(),
         }
     }
 }
@@ -191,7 +191,7 @@ macro_rules! impl_evm_event_table {
                     .expect("negative transaction_index")
             }
             fn address(&self) -> Address {
-                self.address.clone().try_into().expect("invalid address")
+                Address::expect_from(self.address.clone())
             }
         }
     };
@@ -222,9 +222,9 @@ mod tests {
                 log_index: 2,
                 transaction_index: 3,
                 address: addresses[0].into(),
-                owner_0: Some(addresses[1].into()),
-                operator_1: Some(addresses[2].into()),
-                approved_2: Some(true),
+                owner_0: addresses[1].into(),
+                operator_1: addresses[2].into(),
+                approved_2: true,
             }),
             ApprovalForAll {
                 owner: addresses[1],
@@ -270,11 +270,11 @@ mod tests {
                 log_index: 2,
                 transaction_index: 3,
                 address: addresses[0].into(),
-                operator_0: Some(addresses[1].into()),
-                from_1: Some(addresses[2].into()),
-                to_2: Some(addresses[3].into()),
-                id_3: Some(BigDecimal::try_from(id).unwrap()),
-                value_4: Some(BigDecimal::try_from(value).unwrap()),
+                operator_0: addresses[1].into(),
+                from_1: addresses[2].into(),
+                to_2: addresses[3].into(),
+                id_3: BigDecimal::try_from(id).unwrap(),
+                value_4: BigDecimal::try_from(value).unwrap(),
             }),
             Erc1155TransferSingle {
                 operator: addresses[1],
@@ -296,8 +296,8 @@ mod tests {
                 log_index: 2,
                 transaction_index: 3,
                 address: addresses[0].into(),
-                value_0: Some(value.clone()),
-                id_1: Some(BigDecimal::try_from(id).unwrap())
+                value_0: value.clone(),
+                id_1: BigDecimal::try_from(id).unwrap()
             }),
             Erc1155Uri {
                 value,
@@ -314,9 +314,9 @@ mod tests {
                 log_index: 2,
                 transaction_index: 3,
                 address: addresses[0].into(),
-                owner_0: Some(addresses[1].into()),
-                approved_1: Some(addresses[2].into()),
-                tokenid_2: Some(BigDecimal::parse_bytes(b"49", 10).unwrap()),
+                owner_0: addresses[1].into(),
+                approved_1: addresses[2].into(),
+                tokenid_2: BigDecimal::parse_bytes(b"49", 10).unwrap(),
             }),
             Erc721Approval {
                 owner: addresses[1],
@@ -335,9 +335,9 @@ mod tests {
                 log_index: 2,
                 transaction_index: 3,
                 address: addresses[0].into(),
-                from_0: Some(addresses[1].into()),
-                to_1: Some(addresses[2].into()),
-                tokenid_2: BigDecimal::parse_bytes(b"10", 10),
+                from_0: addresses[1].into(),
+                to_1: addresses[2].into(),
+                tokenid_2: BigDecimal::parse_bytes(b"10", 10).unwrap(),
             }),
             Erc721Transfer {
                 from: addresses[1],
