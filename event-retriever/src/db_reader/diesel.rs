@@ -167,7 +167,15 @@ impl EventSource {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
+    use crate::db_reader::models::ApprovalForAll;
+    use crate::db_reader::models::Erc721Transfer;
+    use crate::db_reader::models::EventBase;
+    use crate::db_reader::models::EventMeta;
+    use shared::eth::Address;
+    use shared::eth::U256;
 
     static TEST_DB_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";
 
@@ -244,11 +252,69 @@ mod tests {
     }
     #[test]
     fn get_events_for_block() {
-        // This test uses a block 15_000_000 containing relevant event types
+        // This test uses a block 15_001_141 containing more than 1 relevant event type
+        // This test also demonstrates correctness of Diesel EVM Types.
         let mut client = EventSource::new(TEST_DB_URL).unwrap();
-        let batch_transfers: Vec<_> = client.get_events_for_block(15_000_000).unwrap();
-
-        assert!(batch_transfers.len() >= 20);
-        assert!(is_sorted(batch_transfers.as_slice()))
+        let batch_transfers: Vec<_> = client.get_events_for_block(15_001_141).unwrap();
+        assert!(is_sorted(batch_transfers.as_slice()));
+        assert_eq!(
+            batch_transfers,
+            vec![
+                NftEvent {
+                    base: EventBase {
+                        block_number: 15001141,
+                        log_index: 0,
+                        transaction_index: 0,
+                        contract_address: Address::from_str(
+                            "0xba100000625a3754423978a60c9317c58a424e3d"
+                        )
+                        .unwrap()
+                    },
+                    meta: EventMeta::Erc721Transfer(Erc721Transfer {
+                        from: Address::from_str("0x527f31b668aa54e1be2a5a5b511442ec24ae5540")
+                            .unwrap(),
+                        to: Address::from_str("0x0450cd91ef89740410685f5e618eb4570fcce009")
+                            .unwrap(),
+                        token_id: U256::from(0)
+                    })
+                },
+                NftEvent {
+                    base: EventBase {
+                        block_number: 15001141,
+                        log_index: 1,
+                        transaction_index: 2,
+                        contract_address: Address::from_str(
+                            "0x004cf82a346a71245193075a9b91f4329180766d"
+                        )
+                        .unwrap()
+                    },
+                    meta: EventMeta::ApprovalForAll(ApprovalForAll {
+                        owner: Address::from_str("0x86002b029cbaa1768f16b05ba8fa68bba72a82c3")
+                            .unwrap(),
+                        operator: Address::from_str("0x1e0049783f008a0085193e00003d00cd54003c71")
+                            .unwrap(),
+                        approved: true
+                    })
+                },
+                NftEvent {
+                    base: EventBase {
+                        block_number: 15001141,
+                        log_index: 2,
+                        transaction_index: 38,
+                        contract_address: Address::from_str(
+                            "0xdac17f958d2ee523a2206206994597c13d831ec7"
+                        )
+                        .unwrap()
+                    },
+                    meta: EventMeta::Erc721Transfer(Erc721Transfer {
+                        from: Address::from_str("0xb5d85cbf7cb3ee0d56b3bb207d5fc4b82f43f511")
+                            .unwrap(),
+                        to: Address::from_str("0x43dcc215a0d449675ec582802d229d2df1129978")
+                            .unwrap(),
+                        token_id: U256::from(0)
+                    })
+                }
+            ]
+        );
     }
 }

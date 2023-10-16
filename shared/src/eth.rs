@@ -17,13 +17,6 @@ use std::str::FromStr;
 #[diesel(postgres_type(name = "Address"))]
 pub struct Address(pub H160);
 
-// impl ToSql<Address, Pg> for Address {
-//     fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
-//         out.write_all(self.0.as_bytes())?;
-//         Ok(IsNull::No)
-//     }
-// }
-
 impl FromSql<Address, Pg> for Address {
     fn from_sql(bytes: PgValue<'_>) -> deserialize::Result<Self> {
         Address::try_from(bytes.as_bytes().to_vec()).map_err(|(message, _)| message.into())
@@ -119,14 +112,6 @@ impl From<Address> for H160 {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, SqlType)]
 #[diesel(postgres_type(name = "U256"))]
 pub struct U256(pub Uint256);
-
-// impl ToSql<U256, Pg> for U256 {
-//     fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
-//         // TODO - Need ot convert U256 to bytes.
-//         out.write_all(self.0.to_fixed())?;
-//         Ok(IsNull::No)
-//     }
-// }
 
 impl FromSql<U256, Pg> for U256 {
     fn from_sql(bytes: PgValue<'_>) -> deserialize::Result<Self> {
