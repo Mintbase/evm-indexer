@@ -1,4 +1,11 @@
 use bigdecimal::{BigDecimal, Num};
+use diesel::{
+    self,
+    deserialize::{self, FromSql},
+    pg::{Pg, PgValue},
+    sql_types::{Binary, Numeric, SqlType},
+    Queryable,
+};
 use ethers::{
     abi::ethereum_types::FromDecStrErr,
     types::{H160, U256 as Uint256},
@@ -6,8 +13,30 @@ use ethers::{
 use std::str::FromStr;
 
 /// An address. Can be an EOA or a smart contract address.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SqlType)]
+#[diesel(postgres_type(name = "Address"))]
 pub struct Address(pub H160);
+
+// impl ToSql<Address, Pg> for Address {
+//     fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
+//         out.write_all(self.0.as_bytes())?;
+//         Ok(IsNull::No)
+//     }
+// }
+
+impl FromSql<Address, Pg> for Address {
+    fn from_sql(bytes: PgValue<'_>) -> deserialize::Result<Self> {
+        Address::try_from(bytes.as_bytes().to_vec()).map_err(|(message, _)| message.into())
+    }
+}
+
+impl Queryable<Binary, Pg> for Address {
+    type Row = Vec<u8>;
+
+    fn build(row: Self::Row) -> deserialize::Result<Self> {
+        row.try_into().map_err(|(x, _): (&str, _)| x.into())
+    }
+}
 
 impl Address {
     pub fn zero() -> Self {
@@ -87,8 +116,31 @@ impl From<Address> for H160 {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, SqlType)]
+#[diesel(postgres_type(name = "U256"))]
 pub struct U256(pub Uint256);
+
+// impl ToSql<U256, Pg> for U256 {
+//     fn to_sql<'b>(&'b self, out: &mut Output<'b, '_, Pg>) -> serialize::Result {
+//         // TODO - Need ot convert U256 to bytes.
+//         out.write_all(self.0.to_fixed())?;
+//         Ok(IsNull::No)
+//     }
+// }
+
+impl FromSql<U256, Pg> for U256 {
+    fn from_sql(bytes: PgValue<'_>) -> deserialize::Result<Self> {
+        Ok(U256(Uint256::from_big_endian(bytes.as_bytes())))
+    }
+}
+
+impl Queryable<Numeric, Pg> for U256 {
+    type Row = BigDecimal;
+
+    fn build(row: Self::Row) -> deserialize::Result<Self> {
+        Ok(row.into())
+    }
+}
 
 impl From<BigDecimal> for U256 {
     fn from(val: BigDecimal) -> Self {
