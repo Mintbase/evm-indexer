@@ -1,4 +1,4 @@
-// pub mod handler;
+pub mod handler;
 mod models;
 mod schema;
 #[allow(unused)]

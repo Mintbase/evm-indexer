@@ -54,7 +54,7 @@ pub struct Nft {
     burn_block: Option<i64>,
     burn_tx: Option<i64>,
     minter: Vec<u8>,
-    approved: Option<Vec<u8>>,
+    pub approved: Option<Vec<u8>>,
     json: Option<Value>,
     // TODO - add content category / flag here.
 }

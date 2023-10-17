@@ -98,7 +98,7 @@ pub struct Erc1155Uri {
     pub value: String,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Erc721Approval {
     pub owner: Address,
     pub approved: Address,
