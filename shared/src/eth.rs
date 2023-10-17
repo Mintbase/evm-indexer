@@ -110,7 +110,7 @@ impl From<Address> for H160 {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, SqlType)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, SqlType, Hash)]
 #[diesel(postgres_type(name = "U256"))]
 pub struct U256(pub Uint256);
 

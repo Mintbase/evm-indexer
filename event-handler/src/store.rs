@@ -22,40 +22,23 @@ impl DataStore {
         PgConnection::establish(db_url).context("Error connecting to Diesel Client")
     }
 
-    pub fn load_id_contract_token(
-        &mut self,
-        base: &EventBase,
-        id: U256,
-    ) -> Result<(NftId, TokenContract, Nft)> {
-        let nft_id = NftId {
-            address: base.contract_address,
-            token_id: id,
-        };
-        // Could reduce the number of DB transactions by not saving in these two places,
-        // but it is safer to ensure it gets written here
-        let contract = self.load_or_initialize_contract(base)?;
-        let nft = self.load_or_initialize_nft(base, &nft_id)?;
-        Ok((nft_id, contract, nft))
-    }
-
     pub fn save_nft(&mut self, nft: &Nft) -> Result<()> {
         diesel::insert_into(nfts::dsl::nfts)
             .values(nft)
             .on_conflict((nfts::contract_address, nfts::token_id))
             .do_update()
             .set(nft)
-            .execute(&mut self.client)?;
+            .execute(&mut self.client);
         Ok(())
     }
 
     pub fn load_nft(&mut self, token: &NftId) -> Result<Option<Nft>> {
-        let nft: Option<Nft> = nfts::dsl::nfts
+        nfts::dsl::nfts
             .filter(nfts::contract_address.eq(&token.db_address()))
             .filter(nfts::token_id.eq(&token.db_id()))
             .first(&mut self.client)
             .optional()
-            .context("load_nft")?;
-        Ok(nft)
+            .context("load_nft")
     }
 
     pub fn load_or_initialize_nft(&mut self, base: &EventBase, nft_id: &NftId) -> Result<Nft> {
@@ -63,11 +46,19 @@ impl DataStore {
             Some(nft) => Ok(nft),
             None => {
                 tracing::debug!("new nft {:?}", nft_id);
-                let nft = Nft::build_from(base, nft_id);
-                self.save_nft(&nft)?;
-                Ok(nft)
+                self.initialize_nft(base, nft_id)
             }
         }
+    }
+
+    pub fn initialize_nft(&mut self, base: &EventBase, nft_id: &NftId) -> Result<Nft> {
+        // Check for contract (currently happening if new Nft is detected).
+        // We may want a more efficient way to determine if a contract has
+        // already been indexed.
+        let _ = self.load_or_initialize_contract(base);
+        let mut nft = Nft::build_from(base, nft_id);
+        self.save_nft(&nft)?;
+        Ok(nft)
     }
 
     pub fn save_contract(&mut self, contract: &TokenContract) -> Result<()> {
@@ -93,6 +84,7 @@ impl DataStore {
         match self.load_contract(base.contract_address) {
             Some(contract) => Ok(contract),
             None => {
+                tracing::info!("new contract {:?}", base.contract_address);
                 let contract = TokenContract::from_event_base(base);
                 self.save_contract(&contract)?;
                 Ok(contract)
@@ -108,37 +100,6 @@ impl DataStore {
             .set(&approval)
             .execute(&mut self.client)?;
         Ok(())
-    }
-
-    pub fn set_approval(&mut self, token: &NftId, approved: Address) -> Result<usize> {
-        let set_value: Option<Vec<u8>> = if approved == Address::zero() {
-            None
-        } else {
-            Some(approved.into())
-        };
-
-        let update = diesel::update(
-            nfts::dsl::nfts
-                .filter(nfts::contract_address.eq(&token.db_address()))
-                .filter(nfts::token_id.eq(&token.db_id())),
-        )
-        .set(nfts::approved.eq(set_value))
-        .execute(&mut self.client)?;
-        match update {
-            0 => {
-                // Event handler may want to catch this an simply warn
-                Err(anyhow!(
-                    "set_approval attempt on missing nft row: {:?}",
-                    token
-                ))
-            }
-            1 => Ok(1),
-            _ => unreachable!("nft table primary key error"),
-        }
-    }
-
-    pub fn clear_approval(&mut self, token: &NftId) -> Result<usize> {
-        self.set_approval(token, Address::zero())
     }
 }
 
@@ -188,32 +149,6 @@ mod tests {
             transaction_index: 3,
             contract_address: Address::from(1),
         }
-    }
-
-    #[test]
-    fn set_approval() {
-        let mut store = get_new_store();
-        let contract_address = Address::from(1);
-        let token = NftId {
-            address: contract_address,
-            token_id: U256::from(123),
-        };
-        // Nft Record doesn't exist
-        assert!(store.set_approval(&token, Address::from(3)).is_err());
-
-        // nft must exist before approval
-        let _ = store.load_or_initialize_nft(
-            &EventBase {
-                block_number: 0,
-                log_index: 1,
-                transaction_index: 2,
-                contract_address,
-            },
-            &token,
-        );
-
-        assert_eq!(store.set_approval(&token, Address::from(3)).unwrap(), 1);
-        assert_eq!(store.clear_approval(&token).unwrap(), 1);
     }
 
     #[test]

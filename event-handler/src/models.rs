@@ -6,7 +6,7 @@ use event_retriever::db_reader::models::EventBase;
 use serde_json::Value;
 use shared::eth::{Address, U256};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct NftId {
     pub address: Address,
     pub token_id: U256,
@@ -40,7 +40,7 @@ pub(crate) struct ContractAbi {
     abi: Option<Value>,
 }
 
-#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone)]
 #[diesel(table_name = nfts)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Nft {
