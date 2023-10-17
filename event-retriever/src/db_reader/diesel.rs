@@ -168,6 +168,16 @@ impl EventSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db_reader::models::ApprovalForAll;
+    use crate::db_reader::models::Erc1155TransferBatch;
+    use crate::db_reader::models::Erc1155Uri;
+    use crate::db_reader::models::Erc721Approval;
+    use crate::db_reader::models::Erc721Transfer;
+    use crate::db_reader::models::EventBase;
+    use crate::db_reader::models::EventMeta;
+    use shared::eth::Address;
+    use shared::eth::U256;
+    use std::str::FromStr;
 
     static TEST_DB_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";
 
@@ -204,16 +214,68 @@ mod tests {
     #[test]
     fn erc1155_uri() {
         let uris = test_client()
-            .get_erc1155_uri_for_block_range(single_block_range(15_000_762))
-            .unwrap();
-        assert!(!uris.collect::<Vec<_>>().is_empty());
+            .get_erc1155_uri_for_block_range(single_block_range(15_000_204))
+            .unwrap()
+            .collect::<Vec<_>>();
+        assert_eq!(uris.len(), 1);
+        assert_eq!(
+            uris[0].meta,
+            EventMeta::Erc1155Uri(Erc1155Uri {
+                id: U256::from_dec_str(
+                    "79495434600586702638590703444944964074128496799967025262870501822812670394369"
+                )
+                .unwrap(),
+                value: "ipfs://bafkreibw5wy6wsqukosezcltq5k4necb3k32rdrlg6fltaw7m5q7daqhyq"
+                    .to_string()
+            })
+        );
     }
     #[test]
     fn erc721_approvals() {
         let approvals = test_client()
-            .get_erc721_approvals_for_block_range(single_block_range(15_001_087))
-            .unwrap();
-        assert!(!approvals.collect::<Vec<_>>().is_empty());
+            .get_erc721_approvals_for_block_range(single_block_range(15_000_976))
+            .unwrap()
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            approvals,
+            vec![
+                NftEvent {
+                    base: EventBase {
+                        block_number: 15000976,
+                        log_index: 126,
+                        transaction_index: 33,
+                        contract_address: Address::from_str(
+                            "0x8ff1523091c9517bc328223d50b52ef450200339"
+                        )
+                        .unwrap()
+                    },
+                    meta: EventMeta::Erc721Approval(Erc721Approval {
+                        owner: Address::from_str("0xbe4f28db3e39fbcf420b8f9fc5cf4d244c85a09e")
+                            .unwrap(),
+                        approved: Address::zero(),
+                        id: U256::from(2993)
+                    })
+                },
+                NftEvent {
+                    base: EventBase {
+                        block_number: 15000976,
+                        log_index: 167,
+                        transaction_index: 43,
+                        contract_address: Address::from_str(
+                            "0x5e9dc633830af18aa43ddb7b042646aadedcce81"
+                        )
+                        .unwrap()
+                    },
+                    meta: EventMeta::Erc721Approval(Erc721Approval {
+                        owner: Address::from_str("0xd577002b765e048fda0b64fad500c9b2cb6fa2e4")
+                            .unwrap(),
+                        approved: Address::zero(),
+                        id: U256::from(436)
+                    })
+                }
+            ]
+        );
     }
     #[test]
     fn erc721_transfers() {
@@ -231,12 +293,34 @@ mod tests {
         // Check them out on https://etherscan.io
 
         let mut client = EventSource::new(TEST_DB_URL).unwrap();
-        let batch_transfer_transactions: Vec<_> = client
+        let batch_transfers: Vec<_> = client
             .get_erc1155_transfers_batch_for_block_range(single_block_range(15_000_741))
             .unwrap()
-            .map(|event| event.base.transaction_index)
+            .map(|event| event.meta)
             .collect();
-        assert_eq!(batch_transfer_transactions, vec![56, 104]);
+        assert_eq!(
+            batch_transfers,
+            vec![
+                EventMeta::Erc1155TransferBatch(Erc1155TransferBatch {
+                    operator: Address::from_str("0x381e840f4ebe33d0153e9a312105554594a98c42")
+                        .unwrap(),
+                    from: Address::from_str("0x381e840f4ebe33d0153e9a312105554594a98c42").unwrap(),
+                    to: Address::from_str("0x3bc53864b408e7bca94505c63116e9b73407f3e1").unwrap(),
+                    ids: vec![
+                        U256::from_dec_str("426033523385014956256145008504573800742912").unwrap()
+                    ],
+                    values: vec![U256::from(1)]
+                }),
+                EventMeta::Erc1155TransferBatch(Erc1155TransferBatch {
+                    operator: Address::from_str("0xb1eaa7260ab9e0b413d40d700ebee7bd5e671803")
+                        .unwrap(),
+                    from: Address::from_str("0x0000000000000000000000000000000000000000").unwrap(),
+                    to: Address::from_str("0xb1eaa7260ab9e0b413d40d700ebee7bd5e671803").unwrap(),
+                    ids: vec![U256::from(0), U256::from(4), U256::from(9)],
+                    values: vec![U256::from(1), U256::from(1), U256::from(1)]
+                })
+            ]
+        );
     }
 
     fn is_sorted<T: Ord>(vec: &[T]) -> bool {
@@ -244,11 +328,69 @@ mod tests {
     }
     #[test]
     fn get_events_for_block() {
-        // This test uses a block 15_000_000 containing relevant event types
+        // This test uses a block 15_001_141 containing more than 1 relevant event type
+        // This test also demonstrates correctness of Diesel EVM Types.
         let mut client = EventSource::new(TEST_DB_URL).unwrap();
-        let batch_transfers: Vec<_> = client.get_events_for_block(15_000_000).unwrap();
-
-        assert!(batch_transfers.len() >= 20);
-        assert!(is_sorted(batch_transfers.as_slice()))
+        let batch_transfers: Vec<_> = client.get_events_for_block(15_001_141).unwrap();
+        assert!(is_sorted(batch_transfers.as_slice()));
+        assert_eq!(
+            batch_transfers,
+            vec![
+                NftEvent {
+                    base: EventBase {
+                        block_number: 15001141,
+                        log_index: 0,
+                        transaction_index: 0,
+                        contract_address: Address::from_str(
+                            "0xba100000625a3754423978a60c9317c58a424e3d"
+                        )
+                        .unwrap()
+                    },
+                    meta: EventMeta::Erc721Transfer(Erc721Transfer {
+                        from: Address::from_str("0x527f31b668aa54e1be2a5a5b511442ec24ae5540")
+                            .unwrap(),
+                        to: Address::from_str("0x0450cd91ef89740410685f5e618eb4570fcce009")
+                            .unwrap(),
+                        token_id: U256::from(0)
+                    })
+                },
+                NftEvent {
+                    base: EventBase {
+                        block_number: 15001141,
+                        log_index: 1,
+                        transaction_index: 2,
+                        contract_address: Address::from_str(
+                            "0x004cf82a346a71245193075a9b91f4329180766d"
+                        )
+                        .unwrap()
+                    },
+                    meta: EventMeta::ApprovalForAll(ApprovalForAll {
+                        owner: Address::from_str("0x86002b029cbaa1768f16b05ba8fa68bba72a82c3")
+                            .unwrap(),
+                        operator: Address::from_str("0x1e0049783f008a0085193e00003d00cd54003c71")
+                            .unwrap(),
+                        approved: true
+                    })
+                },
+                NftEvent {
+                    base: EventBase {
+                        block_number: 15001141,
+                        log_index: 2,
+                        transaction_index: 38,
+                        contract_address: Address::from_str(
+                            "0xdac17f958d2ee523a2206206994597c13d831ec7"
+                        )
+                        .unwrap()
+                    },
+                    meta: EventMeta::Erc721Transfer(Erc721Transfer {
+                        from: Address::from_str("0xb5d85cbf7cb3ee0d56b3bb207d5fc4b82f43f511")
+                            .unwrap(),
+                        to: Address::from_str("0x43dcc215a0d449675ec582802d229d2df1129978")
+                            .unwrap(),
+                        token_id: U256::from(0)
+                    })
+                }
+            ]
+        );
     }
 }

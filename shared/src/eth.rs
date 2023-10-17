@@ -1,4 +1,12 @@
 use bigdecimal::{BigDecimal, Num};
+use diesel::{
+    self,
+    data_types::PgNumeric,
+    deserialize::{self, FromSql},
+    pg::{Pg, PgValue},
+    sql_types::{Binary, Numeric, SqlType},
+    Queryable,
+};
 use ethers::{
     abi::ethereum_types::FromDecStrErr,
     types::{H160, U256 as Uint256},
@@ -6,8 +14,23 @@ use ethers::{
 use std::str::FromStr;
 
 /// An address. Can be an EOA or a smart contract address.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SqlType)]
+#[diesel(postgres_type(name = "Address"))]
 pub struct Address(pub H160);
+
+impl FromSql<Address, Pg> for Address {
+    fn from_sql(bytes: PgValue<'_>) -> deserialize::Result<Self> {
+        Address::try_from(bytes.as_bytes().to_vec()).map_err(|(message, _)| message.into())
+    }
+}
+
+impl Queryable<Binary, Pg> for Address {
+    type Row = Vec<u8>;
+
+    fn build(row: Self::Row) -> deserialize::Result<Self> {
+        row.try_into().map_err(|(x, _): (&str, _)| x.into())
+    }
+}
 
 impl Address {
     pub fn zero() -> Self {
@@ -87,8 +110,24 @@ impl From<Address> for H160 {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, SqlType)]
+#[diesel(postgres_type(name = "U256"))]
 pub struct U256(pub Uint256);
+
+impl FromSql<Numeric, Pg> for U256 {
+    fn from_sql(bytes: PgValue<'_>) -> deserialize::Result<Self> {
+        let big_decimal: BigDecimal = PgNumeric::from_sql(bytes)?.try_into()?;
+        Ok(U256::from(big_decimal))
+    }
+}
+
+impl Queryable<Numeric, Pg> for U256 {
+    type Row = BigDecimal;
+
+    fn build(row: Self::Row) -> deserialize::Result<Self> {
+        Ok(row.into())
+    }
+}
 
 impl From<BigDecimal> for U256 {
     fn from(val: BigDecimal) -> Self {
