@@ -62,9 +62,9 @@ pub(crate) struct DbErc1155TransferBatch {
     from: Address,
     #[diesel(sql_type = Address)]
     to: Address,
-    #[diesel(sql_type = diesel::sql_types::Array<U256>)]
+    #[diesel(sql_type = diesel::sql_types::Array<diesel::sql_types::Numeric>)]
     ids: Vec<U256>,
-    #[diesel(sql_type = diesel::sql_types::Array<U256>)]
+    #[diesel(sql_type = diesel::sql_types::Array<diesel::sql_types::Numeric>)]
     values: Vec<U256>,
 }
 impl From<DbErc1155TransferBatch> for Erc1155TransferBatch {
