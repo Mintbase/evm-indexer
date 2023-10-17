@@ -115,7 +115,10 @@ pub struct U256(pub Uint256);
 
 impl FromSql<U256, Pg> for U256 {
     fn from_sql(bytes: PgValue<'_>) -> deserialize::Result<Self> {
-        Ok(U256(Uint256::from_big_endian(bytes.as_bytes())))
+        let as_bytes = bytes.as_bytes();
+        println!("Bytes {:?} - len {}", as_bytes, as_bytes.len());
+        println!("Shortened {:?}", &as_bytes[4..]);
+        Ok(U256(Uint256::from_big_endian(&as_bytes[4..])))
     }
 }
 
@@ -123,6 +126,7 @@ impl Queryable<Numeric, Pg> for U256 {
     type Row = BigDecimal;
 
     fn build(row: Self::Row) -> deserialize::Result<Self> {
+        println!("Queryable<Numeric> {:?}", row);
         Ok(row.into())
     }
 }
