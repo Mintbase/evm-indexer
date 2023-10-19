@@ -206,7 +206,6 @@ mod tests {
         let from = Address::from(2);
         let to = Address::from(3);
         let transfer = Erc721Transfer { from, to, token_id };
-
         handler.handle_erc721_transfer(base, transfer);
 
         assert_eq!(
@@ -224,7 +223,76 @@ mod tests {
                 minter: vec![],
                 approved: None,
                 json: None
-            }
+            },
+            "first transfer"
+        );
+        let base_2 = EventBase {
+            block_number: 4,
+            log_index: 5,
+            transaction_index: 6,
+            contract_address,
+        };
+        // Transfer back
+        handler.handle_erc721_transfer(
+            base_2,
+            Erc721Transfer {
+                from: to,
+                to: from,
+                token_id,
+            },
+        );
+
+        assert_eq!(
+            handler.nft_updates.get(&token).unwrap(),
+            &Nft {
+                contract_address: contract_address.into(),
+                token_id: token_id.into(),
+                owner: from.into(),
+                last_transfer_block: Some(base_2.block_number as i64),
+                last_transfer_tx: Some(base_2.transaction_index as i64),
+                mint_block: base.block_number as i64,
+                mint_tx: base.transaction_index as i64,
+                burn_block: None,
+                burn_tx: None,
+                minter: vec![],
+                approved: None,
+                json: None
+            },
+            "transfer back"
+        );
+
+        // Burn Token
+        let base_3 = EventBase {
+            block_number: 7,
+            log_index: 8,
+            transaction_index: 9,
+            contract_address,
+        };
+        handler.handle_erc721_transfer(
+            base_3,
+            Erc721Transfer {
+                from,
+                to: Address::zero(),
+                token_id,
+            },
+        );
+        assert_eq!(
+            handler.nft_updates.get(&token).unwrap(),
+            &Nft {
+                contract_address: contract_address.into(),
+                token_id: token_id.into(),
+                owner: [0u8; 20].to_vec(),
+                last_transfer_block: Some(base_3.block_number as i64),
+                last_transfer_tx: Some(base_3.transaction_index as i64),
+                mint_block: base.block_number as i64,
+                mint_tx: base.transaction_index as i64,
+                burn_block: Some(base_3.block_number as i64),
+                burn_tx: Some(base_3.transaction_index as i64),
+                minter: vec![],
+                approved: None,
+                json: None
+            },
+            "burn transfer"
         );
     }
 }
