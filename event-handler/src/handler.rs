@@ -117,8 +117,7 @@ mod tests {
     use super::*;
     use crate::models::NftId;
     use event_retriever::db_reader::diesel::BlockRange;
-    use shared::eth::Address;
-    use shared::eth::U256;
+    use shared::eth::{Address, U256};
     use tracing::Level;
     static TEST_SOURCE_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";
     static TEST_STORE_URL: &str = "postgresql://postgres:postgres@localhost:5432/store";
@@ -187,5 +186,45 @@ mod tests {
         );
         let nft = handler.nft_updates.get(&token).unwrap();
         assert_eq!(nft.approved, None);
+    }
+
+    #[test]
+    fn erc721_transfer_handler() {
+        let mut handler = test_handler();
+        let contract_address = Address::from(1);
+        let token_id = U256::from(123);
+        let token = NftId {
+            address: contract_address,
+            token_id,
+        };
+        let base = EventBase {
+            block_number: 1,
+            log_index: 2,
+            transaction_index: 3,
+            contract_address,
+        };
+        let from = Address::from(2);
+        let to = Address::from(3);
+        let transfer = Erc721Transfer { from, to, token_id };
+
+        handler.handle_erc721_transfer(base, transfer);
+
+        assert_eq!(
+            handler.nft_updates.get(&token).unwrap(),
+            &Nft {
+                contract_address: contract_address.into(),
+                token_id: token_id.into(),
+                owner: to.into(),
+                last_transfer_block: Some(base.block_number as i64),
+                last_transfer_tx: Some(base.transaction_index as i64),
+                mint_block: base.block_number as i64,
+                mint_tx: base.transaction_index as i64,
+                burn_block: None,
+                burn_tx: None,
+                minter: vec![],
+                approved: None,
+                json: None
+            }
+        );
     }
 }

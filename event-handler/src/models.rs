@@ -44,8 +44,8 @@ pub(crate) struct ContractAbi {
 #[diesel(table_name = nfts)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Nft {
-    contract_address: Vec<u8>,
-    token_id: BigDecimal,
+    pub contract_address: Vec<u8>,
+    pub token_id: BigDecimal,
     pub owner: Vec<u8>,
     pub last_transfer_block: Option<i64>,
     pub last_transfer_tx: Option<i64>,
@@ -53,9 +53,9 @@ pub struct Nft {
     pub mint_tx: i64,
     pub burn_block: Option<i64>,
     pub burn_tx: Option<i64>,
-    minter: Vec<u8>,
+    pub minter: Vec<u8>,
     pub approved: Option<Vec<u8>>,
-    json: Option<Value>,
+    pub json: Option<Value>,
     // TODO - add content category / flag here.
 }
 
