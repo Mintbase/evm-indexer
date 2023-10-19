@@ -167,17 +167,11 @@ impl EventSource {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::db_reader::models::ApprovalForAll;
-    use crate::db_reader::models::Erc1155TransferBatch;
-    use crate::db_reader::models::Erc1155Uri;
-    use crate::db_reader::models::Erc721Approval;
-    use crate::db_reader::models::Erc721Transfer;
-    use crate::db_reader::models::EventBase;
-    use crate::db_reader::models::EventMeta;
-    use shared::eth::Address;
-    use shared::eth::U256;
     use std::str::FromStr;
+
+    use super::*;
+    use crate::db_reader::models::*;
+    use shared::eth::{Address, U256};
 
     static TEST_DB_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";
 

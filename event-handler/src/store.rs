@@ -2,7 +2,7 @@ use crate::{
     models::*,
     schema::{approval_for_all, nfts, token_contracts},
 };
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection, RunQueryDsl};
 use event_retriever::db_reader::models::EventBase;
 use shared::eth::{Address, U256};
@@ -125,14 +125,16 @@ impl DataStore {
         .set(nfts::approved.eq(set_value))
         .execute(&mut self.client)?;
         match update {
-            0 => Ok(0),
+            0 => {
+                // Event handler may want to catch this an simply warn
+                Err(anyhow!(
+                    "set_approval attempt on missing nft row: {:?}",
+                    token
+                ))
+            }
             1 => Ok(1),
             _ => unreachable!("nft table primary key error"),
         }
-    }
-
-    pub fn clear_approval(&mut self, token: &NftId) -> Result<usize> {
-        self.set_approval(token, Address::zero())
     }
 }
 
@@ -185,7 +187,7 @@ mod tests {
     }
 
     #[test]
-    fn set_and_clear_approval() {
+    fn set_approval() {
         let mut store = get_new_store();
         let contract_address = Address::from(1);
         let token = NftId {
@@ -193,7 +195,7 @@ mod tests {
             token_id: U256::from(123),
         };
         // Nft Record doesn't exist
-        assert_eq!(store.set_approval(&token, Address::from(3)).unwrap(), 0);
+        assert!(store.set_approval(&token, Address::from(3)).is_err());
 
         // nft must exist before approval
         let _ = store.load_or_initialize_nft(
@@ -207,7 +209,6 @@ mod tests {
         );
 
         assert_eq!(store.set_approval(&token, Address::from(3)).unwrap(), 1);
-        assert_eq!(store.clear_approval(&token).unwrap(), 1);
     }
 
     #[test]
