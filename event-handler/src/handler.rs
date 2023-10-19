@@ -36,19 +36,19 @@ impl EventHandler {
             //  eth_getTransactionByBlockNumberAndIndex OR
             //  eth_getBlockByNumber (with true flag for hashes)
             match meta {
-                EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a)?,
-                EventMeta::Erc721Transfer(t) => self.handle_erc721_transfer(base, t)?,
+                EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a),
+                EventMeta::Erc721Transfer(t) => self.handle_erc721_transfer(base, t),
                 _ => continue,
             };
         }
         // drain memory into database.
         for (_, nft) in self.nft_updates.drain() {
             // TODO - Batch these updates.
-            self.store.save_nft(&nft)?
+            self.store.save_nft(&nft);
         }
         Ok(())
     }
-    fn handle_erc721_approval(&mut self, base: EventBase, approval: Erc721Approval) -> Result<()> {
+    fn handle_erc721_approval(&mut self, base: EventBase, approval: Erc721Approval) {
         tracing::debug!("Processing {:?} of {:?}", approval, base.contract_address);
         let nft_id = NftId {
             address: base.contract_address,
@@ -56,11 +56,11 @@ impl EventHandler {
         };
         let mut nft = match self.nft_updates.remove(&nft_id) {
             Some(nft) => nft,
-            None => match self.store.load_nft(&nft_id)? {
+            None => match self.store.load_nft(&nft_id) {
                 Some(nft) => nft,
                 None => {
                     tracing::warn!("approval received before token mint {:?}", nft_id);
-                    self.store.initialize_nft(&base, &nft_id)?
+                    self.store.initialize_nft(&base, &nft_id)
                 }
             },
         };
@@ -70,10 +70,9 @@ impl EventHandler {
             Some(approval.approved.into())
         };
         self.nft_updates.insert(nft_id, nft);
-        Ok(())
     }
 
-    fn handle_erc721_transfer(&mut self, base: EventBase, transfer: Erc721Transfer) -> Result<()> {
+    fn handle_erc721_transfer(&mut self, base: EventBase, transfer: Erc721Transfer) {
         // Note that these may also include Erc20 Transfers (and we will have to handle that).
         tracing::debug!("Processing {:?} of {:?}", transfer, base.contract_address);
         let nft_id = NftId {
@@ -83,7 +82,7 @@ impl EventHandler {
 
         let mut nft = match self.nft_updates.remove(&nft_id) {
             Some(nft) => nft,
-            None => self.store.load_or_initialize_nft(&base, &nft_id)?,
+            None => self.store.load_or_initialize_nft(&base, &nft_id),
         };
         // TODO - get Uri, creator, save TxReceipt (at least hash)
         let EventBase {
@@ -110,7 +109,6 @@ impl EventHandler {
         // Approvals are unset on transfer.
         nft.approved = None;
         self.nft_updates.insert(nft_id, nft);
-        Ok(())
     }
 }
 
@@ -173,13 +171,13 @@ mod tests {
             id: token.token_id,
         };
         // Approval before token existance (handled the way the event said)
-        assert!(handler.handle_erc721_approval(base, approval).is_ok());
+        handler.handle_erc721_approval(base, approval);
         let nft = handler.nft_updates.get(&token).unwrap();
         assert_eq!(
             Address::expect_from(nft.clone().approved.unwrap()),
             approved
         );
-        let _ = handler.handle_erc721_approval(
+        handler.handle_erc721_approval(
             base,
             Erc721Approval {
                 owner: Address::from(2),
