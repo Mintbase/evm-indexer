@@ -1,4 +1,9 @@
-use crate::{models::NftId, store::DataStore};
+use std::collections::HashMap;
+
+use crate::{
+    models::{Nft, NftId},
+    store::DataStore,
+};
 use anyhow::{Context, Result};
 use event_retriever::db_reader::{
     diesel::{BlockRange, EventSource},
@@ -11,6 +16,8 @@ pub struct EventHandler {
     source: EventSource,
     /// Location of existing stored content
     store: DataStore,
+    /// This is a memory store of nft updates.
+    nft_updates: HashMap<NftId, Nft>,
 }
 
 impl EventHandler {
@@ -18,6 +25,7 @@ impl EventHandler {
         Ok(Self {
             source: EventSource::new(source_url).context("init EventSource")?,
             store: DataStore::new(store_url).context("init DataStore")?,
+            nft_updates: HashMap::new(),
         })
     }
     pub fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
@@ -33,6 +41,11 @@ impl EventHandler {
                 _ => continue,
             };
         }
+        // drain memory into database.
+        for (_, nft) in self.nft_updates.drain() {
+            // TODO - Batch these updates.
+            self.store.save_nft(&nft)?
+        }
         Ok(())
     }
     fn handle_erc721_approval(&mut self, base: EventBase, approval: Erc721Approval) -> Result<()> {
@@ -41,19 +54,37 @@ impl EventHandler {
             address: base.contract_address,
             token_id: approval.id,
         };
-        match self.store.set_approval(&nft_id, approval.approved) {
-            Ok(_) => (),
-            Err(err) => tracing::warn!("{}", err.to_string()),
-        }
+        let mut nft = match self.nft_updates.remove(&nft_id) {
+            Some(nft) => nft,
+            None => match self.store.load_nft(&nft_id)? {
+                Some(nft) => nft,
+                None => {
+                    tracing::warn!("approval received before token mint {:?}", nft_id);
+                    self.store.initialize_nft(&base, &nft_id)?
+                }
+            },
+        };
+        nft.approved = if approval.approved == Address::zero() {
+            None
+        } else {
+            Some(approval.approved.into())
+        };
+        self.nft_updates.insert(nft_id, nft);
         Ok(())
     }
 
     fn handle_erc721_transfer(&mut self, base: EventBase, transfer: Erc721Transfer) -> Result<()> {
         // Note that these may also include Erc20 Transfers (and we will have to handle that).
         tracing::debug!("Processing {:?} of {:?}", transfer, base.contract_address);
-        let (nft_id, _contract, mut nft) = self
-            .store
-            .load_id_contract_token(&base, transfer.token_id)?;
+        let nft_id = NftId {
+            address: base.contract_address,
+            token_id: transfer.token_id,
+        };
+
+        let mut nft = match self.nft_updates.remove(&nft_id) {
+            Some(nft) => nft,
+            None => self.store.load_or_initialize_nft(&base, &nft_id)?,
+        };
         // TODO - get Uri, creator, save TxReceipt (at least hash)
         let EventBase {
             block_number,
@@ -76,11 +107,9 @@ impl EventHandler {
         nft.last_transfer_block = Some(block);
         nft.last_transfer_tx = Some(tx_index);
         // TODO - fetch and set json. Maybe in load_or_initialize
-        self.store.save_nft(&nft)?;
         // Approvals are unset on transfer.
-        // TODO - This could probably also just be set on the field directly.
-        // nft.approved = None;
-        self.store.clear_approval(&nft_id)?;
+        nft.approved = None;
+        self.nft_updates.insert(nft_id, nft);
         Ok(())
     }
 }
@@ -115,7 +144,7 @@ mod tests {
             assert!(handler
                 .process_events_for_block_range(BlockRange {
                     start: block,
-                    end: block + 10,
+                    end: block + 70,
                 })
                 .is_ok())
         });
@@ -137,20 +166,18 @@ mod tests {
             transaction_index: 3,
             contract_address,
         };
+        let approved = Address::from(3);
         let approval = Erc721Approval {
             owner: Address::from(2),
-            approved: Address::from(3),
+            approved,
             id: token.token_id,
         };
-        // No approval yet.
+        // Approval before token existance (handled the way the event said)
         assert!(handler.handle_erc721_approval(base, approval).is_ok());
-        let nft = handler.store.load_or_initialize_nft(&base, &token).unwrap();
-        assert_eq!(nft.approved, None); // This also implies the first approval was not set.
-        assert!(handler.handle_erc721_approval(base, approval).is_ok());
-        let nft = handler.store.load_nft(&token).unwrap().unwrap();
+        let nft = handler.nft_updates.get(&token).unwrap();
         assert_eq!(
-            Address::expect_from(nft.approved.unwrap()),
-            approval.approved
+            Address::expect_from(nft.clone().approved.unwrap()),
+            approved
         );
         let _ = handler.handle_erc721_approval(
             base,
@@ -160,8 +187,7 @@ mod tests {
                 id: token.token_id,
             },
         );
-
-        let nft = handler.store.load_nft(&token).unwrap().unwrap();
+        let nft = handler.nft_updates.get(&token).unwrap();
         assert_eq!(nft.approved, None);
     }
 }

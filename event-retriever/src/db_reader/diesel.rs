@@ -47,7 +47,8 @@ impl EventSource {
         let events = vec![
             Box::new(self.get_approvals_for_all_for_block_range(range)?)
                 as Box<dyn Iterator<Item = NftEvent>>,
-            Box::new(self.get_erc1155_transfers_batch_for_block_range(range)?),
+            // See Issue: https://github.com/Mintbase/evm-indexer/issues/39
+            // Box::new(self.get_erc1155_transfers_batch_for_block_range(range)?),
             Box::new(self.get_erc1155_transfers_single_for_block_range(range)?),
             Box::new(self.get_erc1155_uri_for_block_range(range)?),
             Box::new(self.get_erc721_approvals_for_block_range(range)?),
