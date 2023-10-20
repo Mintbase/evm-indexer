@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     models::{Nft, NftId},
+    receipts::get_block_receipts,
     store::DataStore,
 };
 use anyhow::{Context, Result};
@@ -11,6 +12,7 @@ use event_retriever::db_reader::{
 };
 use shared::eth::Address;
 
+use ethers::providers::{Http, Provider};
 pub struct EventHandler {
     /// Source of events for processing
     source: EventSource,
@@ -18,28 +20,44 @@ pub struct EventHandler {
     store: DataStore,
     /// This is a memory store of nft updates.
     nft_updates: HashMap<NftId, Nft>,
+    /// Web3 Provider
+    eth_client: Provider<Http>,
 }
 
 impl EventHandler {
-    pub fn new(source_url: &str, store_url: &str) -> Result<Self> {
+    pub fn new(source_url: &str, store_url: &str, eth_rpc: &str) -> Result<Self> {
         Ok(Self {
             source: EventSource::new(source_url).context("init EventSource")?,
             store: DataStore::new(store_url).context("init DataStore")?,
             nft_updates: HashMap::new(),
+            eth_client: Provider::<Http>::try_from(eth_rpc).expect("Needed for test"),
         })
     }
-    pub fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
-        let events = self.source.get_events_for_block_range(range)?;
-        tracing::debug!("Retrieved {} events for {:?}", events.len(), range);
-        for NftEvent { base, meta } in events.into_iter() {
-            // TODO - fetch transaction hashes for block.
-            //  eth_getTransactionByBlockNumberAndIndex OR
-            //  eth_getBlockByNumber (with true flag for hashes)
-            match meta {
-                EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a),
-                EventMeta::Erc721Transfer(t) => self.handle_erc721_transfer(base, t),
-                _ => continue,
-            };
+    pub async fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
+        let event_map = self.source.get_events_for_block_range(range)?;
+
+        for (block, block_events) in event_map.into_iter() {
+            let _receipts = get_block_receipts(
+                &self.eth_client,
+                block,
+                block_events.keys().cloned().collect(),
+            )
+            .await?;
+            // TODO - recover meta on map (like total events - for logging)
+            // let block_events = event_map[block];
+            // tracing::debug!("Retrieved {} events for {:?}", events.len(), range);
+            for (_tx_index, tx_events) in block_events {
+                for NftEvent { base, meta } in tx_events.into_iter() {
+                    // TODO - fetch transaction hashes for block.
+                    //  eth_getTransactionByBlockNumberAndIndex OR
+                    //  eth_getBlockByNumber (with true flag for hashes)
+                    match meta {
+                        EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a),
+                        EventMeta::Erc721Transfer(t) => self.handle_erc721_transfer(base, t),
+                        _ => continue,
+                    };
+                }
+            }
         }
         // drain memory into database.
         for (_, nft) in self.nft_updates.drain() {
@@ -117,33 +135,28 @@ mod tests {
     use crate::models::NftId;
     use event_retriever::db_reader::diesel::BlockRange;
     use shared::eth::{Address, U256};
-    use tracing::Level;
     static TEST_SOURCE_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";
     static TEST_STORE_URL: &str = "postgresql://postgres:postgres@localhost:5432/store";
+    static TEST_ETH_RPC: &str = "https://rpc.ankr.com/eth";
 
     fn test_handler() -> EventHandler {
-        let mut handler = EventHandler::new(TEST_SOURCE_URL, TEST_STORE_URL).unwrap();
+        let mut handler = EventHandler::new(TEST_SOURCE_URL, TEST_STORE_URL, TEST_ETH_RPC).unwrap();
         handler.store.clear_tables();
         handler
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore]
-    fn event_processing() {
-        let subscriber = tracing_subscriber::FmtSubscriber::builder()
-            .with_max_level(Level::DEBUG)
-            .finish();
-
-        let mut handler = EventHandler::new(TEST_SOURCE_URL, TEST_STORE_URL).unwrap();
+    async fn event_processing() {
+        let mut handler = EventHandler::new(TEST_SOURCE_URL, TEST_STORE_URL, TEST_ETH_RPC).unwrap();
         let block = 15_000_000;
-        tracing::subscriber::with_default(subscriber, || {
-            assert!(handler
-                .process_events_for_block_range(BlockRange {
-                    start: block,
-                    end: block + 70,
-                })
-                .is_ok())
-        });
+        assert!(handler
+            .process_events_for_block_range(BlockRange {
+                start: block,
+                end: block + 70,
+            })
+            .await
+            .is_ok())
         // TODO - construct a sequence of events and actually check the Store State is as expected here.
     }
 

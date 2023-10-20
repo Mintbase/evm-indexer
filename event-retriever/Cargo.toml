@@ -11,3 +11,6 @@ bigdecimal = { version = "0.3.1", features = ["serde"] }
 diesel = { version = "2.1.1", features = ["postgres", "numeric"] }
 dotenv = "0.15.0"
 shared = { path = "../shared" }
+
+[dev-dependencies]
+maplit = "1.0.2"
