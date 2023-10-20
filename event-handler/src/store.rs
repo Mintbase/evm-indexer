@@ -2,16 +2,16 @@ use crate::{
     models::*,
     schema::{approval_for_all, nfts, token_contracts},
 };
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection, RunQueryDsl};
 use event_retriever::db_reader::models::EventBase;
-use shared::eth::{Address, U256};
+use shared::eth::Address;
 
 pub struct DataStore {
     client: PgConnection,
 }
 
-fn handle_insert_result(result: QueryResult<usize>, expected_updates: usize, context: String) {
+fn handle_insert_result(result: QueryResult<usize>, context: String) {
     match result {
         Ok(value) => match value {
             1 => (),
@@ -53,7 +53,7 @@ impl DataStore {
             .do_update()
             .set(nft)
             .execute(&mut self.client);
-        handle_insert_result(result, 1, format!("save_nft {:?}", nft))
+        handle_insert_result(result, format!("save_nft {:?}", nft))
     }
 
     pub fn save_contract(&mut self, contract: &TokenContract) {
@@ -63,7 +63,7 @@ impl DataStore {
             .do_update()
             .set(contract)
             .execute(&mut self.client);
-        handle_insert_result(result, 1, format!("save_contract {:?}", contract))
+        handle_insert_result(result, format!("save_contract {:?}", contract))
     }
 
     pub fn set_approval_for_all(&mut self, approval: ApprovalForAll) {
@@ -73,7 +73,7 @@ impl DataStore {
             .do_update()
             .set(&approval)
             .execute(&mut self.client);
-        handle_insert_result(result, 1, format!("set_approval_for_all {:?}", approval))
+        handle_insert_result(result, format!("set_approval_for_all {:?}", approval))
     }
 
     pub fn load_nft(&mut self, token: &NftId) -> Option<Nft> {

@@ -1,5 +1,5 @@
 pub mod handler;
 mod models;
 mod schema;
-#[allow(unused)]
-mod store;
+// TODO - remove pub here:
+pub mod store;

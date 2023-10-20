@@ -73,7 +73,6 @@ impl EventHandler {
     }
 
     fn handle_erc721_transfer(&mut self, base: EventBase, transfer: Erc721Transfer) {
-        // Note that these may also include Erc20 Transfers (and we will have to handle that).
         tracing::debug!("Processing {:?} of {:?}", transfer, base.contract_address);
         let nft_id = NftId {
             address: base.contract_address,
