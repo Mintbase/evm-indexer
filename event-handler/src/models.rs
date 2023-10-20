@@ -6,7 +6,7 @@ use event_retriever::db_reader::models::EventBase;
 use serde_json::Value;
 use shared::eth::{Address, U256};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct NftId {
     pub address: Address,
     pub token_id: U256,
@@ -22,7 +22,7 @@ impl NftId {
     }
 }
 
-#[derive(Queryable, Selectable, Insertable, AsChangeset)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug)]
 #[diesel(table_name = approval_for_all)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ApprovalForAll {
@@ -40,22 +40,22 @@ pub(crate) struct ContractAbi {
     abi: Option<Value>,
 }
 
-#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone)]
 #[diesel(table_name = nfts)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Nft {
-    contract_address: Vec<u8>,
-    token_id: BigDecimal,
-    owner: Vec<u8>,
-    last_transfer_block: Option<i64>,
-    last_transfer_tx: Option<i64>,
-    mint_block: i64,
-    mint_tx: i64,
-    burn_block: Option<i64>,
-    burn_tx: Option<i64>,
-    minter: Vec<u8>,
+    pub contract_address: Vec<u8>,
+    pub token_id: BigDecimal,
+    pub owner: Vec<u8>,
+    pub last_transfer_block: Option<i64>,
+    pub last_transfer_tx: Option<i64>,
+    pub mint_block: i64,
+    pub mint_tx: i64,
+    pub burn_block: Option<i64>,
+    pub burn_tx: Option<i64>,
+    pub minter: Vec<u8>,
     pub approved: Option<Vec<u8>>,
-    json: Option<Value>,
+    pub json: Option<Value>,
     // TODO - add content category / flag here.
 }
 
