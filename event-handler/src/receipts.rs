@@ -92,7 +92,7 @@ pub async fn get_block_receipts(
                         result.insert(index, receipt.into());
                     }
                     None => {
-                        tracing::warn!("transaction at index {index} not found");
+                        tracing::warn!("transaction at block {block}, index {index} not found");
                     }
                 }
             }
