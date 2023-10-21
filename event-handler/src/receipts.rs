@@ -96,12 +96,6 @@ pub async fn get_block_receipts(
                     }
                 }
             }
-            // This is the sequential code.
-            // let tx = eth_client
-            //     .get_transaction_by_block_and_index(block, index.into())
-            //     .await?
-            //     .expect("TODO - unwrap or error");
-            // result.insert(index, tx.into());
             Ok(result)
         }
     }
