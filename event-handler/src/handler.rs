@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    models::{Nft, NftId},
+    models::{Nft, NftId, Transaction},
     receipts::get_block_receipts,
     store::DataStore,
 };
@@ -35,18 +35,23 @@ impl EventHandler {
     }
     pub async fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
         let event_map = self.source.get_events_for_block_range(range)?;
-
-        for (block, block_events) in event_map.into_iter() {
-            let _receipts = get_block_receipts(
+        tracing::debug!("Retrieved {} events for {:?}", event_map.size, range);
+        let mut transaction_updates = Vec::new();
+        for (block, block_events) in event_map.data.into_iter() {
+            let tx_data = get_block_receipts(
                 &self.eth_client,
                 block,
-                block_events.keys().cloned().collect(),
+                block_events.data.keys().cloned().map(|k| k.0).collect(),
             )
             .await?;
-            // TODO - recover meta on map (like total events - for logging)
-            // let block_events = event_map[block];
-            // tracing::debug!("Retrieved {} events for {:?}", events.len(), range);
-            for (_tx_index, tx_events) in block_events {
+            transaction_updates.extend(
+                tx_data
+                    .into_iter()
+                    .map(|(idx, data)| Transaction::new(block, idx, data))
+                    .collect::<Vec<_>>(),
+            );
+            // TODO - Write (block_number, index, hash) to Transactions table.
+            for ((_tidx, _lidx), tx_events) in block_events.data {
                 for NftEvent { base, meta } in tx_events.into_iter() {
                     // TODO - fetch transaction hashes for block.
                     //  eth_getTransactionByBlockNumberAndIndex OR
@@ -59,6 +64,8 @@ impl EventHandler {
                 }
             }
         }
+
+        self.store.save_transactions(transaction_updates);
         // drain memory into database.
         for (_, nft) in self.nft_updates.drain() {
             // TODO - Batch these updates.

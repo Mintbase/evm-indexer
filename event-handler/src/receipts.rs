@@ -6,7 +6,7 @@ use ethers::{
 };
 use std::collections::{HashMap, HashSet};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub struct TxDetails {
     pub hash: H256,
     pub from: Address,
@@ -38,6 +38,13 @@ impl From<ethers::types::Transaction> for TxDetails {
 // - eth_getBlockReceipts                    is 59 while
 // - eth_getTransactionByBlockNumberAndIndex is 2
 // So when indices.len() < 59/2 its cheaper to get them individually.
+
+// TODO - make a blocks table for timestamps.
+// let block_time = eth_client
+//     .get_block(block)
+//     .await?
+//     .expect("block {block} not found")
+//     .timestamp;
 pub async fn get_block_receipts(
     eth_client: &Provider<Http>,
     block: u64,

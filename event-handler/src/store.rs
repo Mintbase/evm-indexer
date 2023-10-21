@@ -1,6 +1,6 @@
 use crate::{
     models::*,
-    schema::{approval_for_all, nfts, token_contracts},
+    schema::{approval_for_all, nfts, token_contracts, transactions},
 };
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection, RunQueryDsl};
@@ -11,13 +11,15 @@ pub struct DataStore {
     client: PgConnection,
 }
 
-fn handle_insert_result(result: QueryResult<usize>, context: String) {
+fn handle_insert_result(result: QueryResult<usize>, expected_updates: usize, context: String) {
     match result {
-        Ok(value) => match value {
-            1 => (),
-            0 => panic!("no records inserted on {context}"),
-            _ => unreachable!("database constrained by primary key"),
-        },
+        Ok(value) => {
+            if value != expected_updates {
+                tracing::warn!(
+                    "unexpected update number for {context} expected {expected_updates} got {value}",
+                )
+            }
+        }
         Err(err) => {
             tracing::error!("execution error {:?}", err);
             panic!("unhandled query result error")
@@ -46,6 +48,16 @@ impl DataStore {
         PgConnection::establish(db_url).context("Error connecting to Diesel Client")
     }
 
+    pub fn save_transactions(&mut self, txs: Vec<Transaction>) {
+        let expected_inserts = txs.len();
+        let result = diesel::insert_into(transactions::dsl::transactions)
+            .values(txs)
+            .on_conflict((transactions::block_number, transactions::index))
+            .do_nothing()
+            .execute(&mut self.client);
+        handle_insert_result(result, expected_inserts, "save_transactions".to_string())
+    }
+
     pub fn save_nft(&mut self, nft: &Nft) {
         let result = diesel::insert_into(nfts::dsl::nfts)
             .values(nft)
@@ -53,7 +65,7 @@ impl DataStore {
             .do_update()
             .set(nft)
             .execute(&mut self.client);
-        handle_insert_result(result, format!("save_nft {:?}", nft))
+        handle_insert_result(result, 1, format!("save_nft {:?}", nft))
     }
 
     pub fn save_contract(&mut self, contract: &TokenContract) {
@@ -63,7 +75,7 @@ impl DataStore {
             .do_update()
             .set(contract)
             .execute(&mut self.client);
-        handle_insert_result(result, format!("save_contract {:?}", contract))
+        handle_insert_result(result, 1, format!("save_contract {:?}", contract))
     }
 
     pub fn set_approval_for_all(&mut self, approval: ApprovalForAll) {
@@ -73,7 +85,7 @@ impl DataStore {
             .do_update()
             .set(&approval)
             .execute(&mut self.client);
-        handle_insert_result(result, format!("set_approval_for_all {:?}", approval))
+        handle_insert_result(result, 1, format!("set_approval_for_all {:?}", approval))
     }
 
     pub fn load_nft(&mut self, token: &NftId) -> Option<Nft> {

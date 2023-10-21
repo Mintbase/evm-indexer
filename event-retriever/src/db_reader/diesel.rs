@@ -26,6 +26,41 @@ pub struct EventSource {
     client: PgConnection,
 }
 
+pub type BlockNum = u64;
+pub type TxIndex = u64;
+pub type LogIndex = u64;
+#[derive(Default, PartialEq, Debug)]
+pub struct BlockEvents {
+    /// Ordered map of EventLogs indexed by TxIndex
+    pub data: BTreeMap<(TxIndex, LogIndex), Vec<NftEvent>>,
+}
+#[derive(Default)]
+pub struct BlockRangeEvents {
+    pub data: BTreeMap<BlockNum, BlockEvents>,
+    /// Total number of events (for logging)
+    pub size: usize,
+}
+
+impl BlockRangeEvents {
+    fn new(events: Vec<NftEvent>) -> Self {
+        let mut result = Self {
+            data: BTreeMap::new(),
+            size: events.len(),
+        };
+        for event in events {
+            result
+                .data
+                .entry(event.base.block_number)
+                .or_default()
+                .data
+                .entry((event.base.transaction_index, event.base.log_index))
+                .or_default()
+                .push(event)
+        }
+        result
+    }
+}
+
 impl EventSource {
     pub fn new(connection: &str) -> Result<Self> {
         Ok(Self {
@@ -37,18 +72,15 @@ impl EventSource {
         PgConnection::establish(db_url).context("Error connecting to Diesel Client")
     }
 
-    pub fn get_events_for_block(&mut self, block: i64) -> Result<BTreeMap<u64, Vec<NftEvent>>> {
+    pub fn get_events_for_block(&mut self, block: i64) -> Result<BlockEvents> {
         let mut events = self.get_events_for_block_range(BlockRange {
             start: block,
             end: block + 1,
         })?;
-        Ok(events.remove(&(block as u64)).unwrap_or(BTreeMap::new()))
+        Ok(events.data.remove(&(block as u64)).unwrap_or_default())
     }
 
-    pub fn get_events_for_block_range(
-        &mut self,
-        range: BlockRange,
-    ) -> Result<BTreeMap<u64, BTreeMap<u64, Vec<NftEvent>>>> {
+    pub fn get_events_for_block_range(&mut self, range: BlockRange) -> Result<BlockRangeEvents> {
         let events = vec![
             Box::new(self.get_approvals_for_all_for_block_range(range)?)
                 as Box<dyn Iterator<Item = NftEvent>>,
@@ -60,16 +92,7 @@ impl EventSource {
         ];
         // We probably don't need this anymore (or this can construct the map).
         let ordered_events = merge_sorted_iters::<NftEvent>(events);
-        let mut result: BTreeMap<u64, BTreeMap<u64, Vec<NftEvent>>> = BTreeMap::new();
-        for event in ordered_events {
-            result
-                .entry(event.base.block_number)
-                .or_default()
-                .entry(event.base.transaction_index)
-                .or_default()
-                .push(event)
-        }
-        Ok(result)
+        Ok(BlockRangeEvents::new(ordered_events))
     }
 
     pub fn get_approvals_for_all_for_block_range(
@@ -343,61 +366,63 @@ mod tests {
         // This test uses a block 15_001_141 containing more than 1 relevant event type
         // This test also demonstrates correctness of Diesel EVM Types.
         let mut client = EventSource::new(TEST_DB_URL).unwrap();
-        let batch_transfers: BTreeMap<_, Vec<_>> = client.get_events_for_block(15_001_141).unwrap();
+        let batch_transfers: BlockEvents = client.get_events_for_block(15_001_141).unwrap();
         assert_eq!(
             batch_transfers,
-            btreemap! {0 => vec![NftEvent {
-                base: EventBase {
-                    block_number: 15001141,
-                    log_index: 0,
-                    transaction_index: 0,
-                    contract_address: Address::from_str(
-                        "0xba100000625a3754423978a60c9317c58a424e3d"
-                    )
-                    .unwrap()
-                },
-                meta: EventMeta::Erc721Transfer(Erc721Transfer {
-                    from: Address::from_str("0x527f31b668aa54e1be2a5a5b511442ec24ae5540")
-                        .unwrap(),
-                    to: Address::from_str("0x0450cd91ef89740410685f5e618eb4570fcce009")
-                        .unwrap(),
-                    token_id: U256::from(0)
-                })
-            }], 2 => vec![NftEvent {
-                base: EventBase {
-                    block_number: 15001141,
-                    log_index: 1,
-                    transaction_index: 2,
-                    contract_address: Address::from_str(
-                        "0x004cf82a346a71245193075a9b91f4329180766d"
-                    )
-                    .unwrap()
-                },
-                meta: EventMeta::ApprovalForAll(ApprovalForAll {
-                    owner: Address::from_str("0x86002b029cbaa1768f16b05ba8fa68bba72a82c3")
-                        .unwrap(),
-                    operator: Address::from_str("0x1e0049783f008a0085193e00003d00cd54003c71")
-                        .unwrap(),
-                    approved: true
-                })
-            }], 38 => vec![NftEvent {
-                base: EventBase {
-                    block_number: 15001141,
-                    log_index: 2,
-                    transaction_index: 38,
-                    contract_address: Address::from_str(
-                        "0xdac17f958d2ee523a2206206994597c13d831ec7"
-                    )
-                    .unwrap()
-                },
-                meta: EventMeta::Erc721Transfer(Erc721Transfer {
-                    from: Address::from_str("0xb5d85cbf7cb3ee0d56b3bb207d5fc4b82f43f511")
-                        .unwrap(),
-                    to: Address::from_str("0x43dcc215a0d449675ec582802d229d2df1129978")
-                        .unwrap(),
-                    token_id: U256::from(0)
-                })
-            }] }
+            BlockEvents {
+                data: btreemap! {(0, 0) => vec![NftEvent {
+                    base: EventBase {
+                        block_number: 15001141,
+                        log_index: 0,
+                        transaction_index: 0,
+                        contract_address: Address::from_str(
+                            "0xba100000625a3754423978a60c9317c58a424e3d"
+                        )
+                        .unwrap()
+                    },
+                    meta: EventMeta::Erc721Transfer(Erc721Transfer {
+                        from: Address::from_str("0x527f31b668aa54e1be2a5a5b511442ec24ae5540")
+                            .unwrap(),
+                        to: Address::from_str("0x0450cd91ef89740410685f5e618eb4570fcce009")
+                            .unwrap(),
+                        token_id: U256::from(0)
+                    })
+                }], (2, 1) => vec![NftEvent {
+                    base: EventBase {
+                        block_number: 15001141,
+                        log_index: 1,
+                        transaction_index: 2,
+                        contract_address: Address::from_str(
+                            "0x004cf82a346a71245193075a9b91f4329180766d"
+                        )
+                        .unwrap()
+                    },
+                    meta: EventMeta::ApprovalForAll(ApprovalForAll {
+                        owner: Address::from_str("0x86002b029cbaa1768f16b05ba8fa68bba72a82c3")
+                            .unwrap(),
+                        operator: Address::from_str("0x1e0049783f008a0085193e00003d00cd54003c71")
+                            .unwrap(),
+                        approved: true
+                    })
+                }], (38, 2) => vec![NftEvent {
+                    base: EventBase {
+                        block_number: 15001141,
+                        log_index: 2,
+                        transaction_index: 38,
+                        contract_address: Address::from_str(
+                            "0xdac17f958d2ee523a2206206994597c13d831ec7"
+                        )
+                        .unwrap()
+                    },
+                    meta: EventMeta::Erc721Transfer(Erc721Transfer {
+                        from: Address::from_str("0xb5d85cbf7cb3ee0d56b3bb207d5fc4b82f43f511")
+                            .unwrap(),
+                        to: Address::from_str("0x43dcc215a0d449675ec582802d229d2df1129978")
+                            .unwrap(),
+                        token_id: U256::from(0)
+                    })
+                }] }
+            }
         );
     }
 }
