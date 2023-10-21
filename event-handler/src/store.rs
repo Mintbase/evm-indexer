@@ -141,11 +141,13 @@ impl DataStore {
 #[cfg(test)]
 mod tests {
     use crate::{
-        models::{Nft, TokenContract},
+        models::{Nft, TokenContract, Transaction},
+        receipts::TxDetails,
         schema::{approval_for_all, contract_abis, nfts, token_contracts, transactions},
         store::{DataStore, NftId},
     };
-    use diesel::RunQueryDsl;
+    use diesel::{QueryDsl, RunQueryDsl};
+    use ethers::types::{H160, H256};
     use event_retriever::db_reader::models::EventBase;
     use shared::eth::{Address, U256};
 
@@ -184,6 +186,40 @@ mod tests {
             transaction_index: 3,
             contract_address: Address::from(1),
         }
+    }
+
+    #[test]
+    fn save_transactions() {
+        let mut store = get_new_store();
+        let details = TxDetails {
+            hash: H256::from_low_u64_be(1),
+            from: H160::from_low_u64_be(1),
+            to: Some(H160::from_low_u64_be(2)),
+        };
+        // First call should not panic or log
+        store.save_transactions(vec![
+            Transaction::new(1, 2, details),
+            Transaction::new(3, 4, details),
+        ]);
+
+        assert_eq!(
+            Ok(2),
+            transactions::dsl::transactions
+                .count()
+                .get_result(&mut store.client)
+        );
+
+        // This call will do nothing.
+        store.save_transactions(vec![
+            // Notice same (block, index) = (1, 2) as above.
+            Transaction::new(1, 2, details),
+        ]);
+        assert_eq!(
+            Ok(2),
+            transactions::dsl::transactions
+                .count()
+                .get_result(&mut store.client)
+        );
     }
 
     #[test]
