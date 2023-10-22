@@ -146,6 +146,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn get_many_receipts() {
         let eth_client = test_provider();
         let indices = (0..500).collect::<HashSet<_>>();

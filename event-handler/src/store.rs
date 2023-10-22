@@ -1,5 +1,6 @@
 use crate::{
     models::*,
+    receipts::TxDetails,
     schema::{approval_for_all, nfts, token_contracts, transactions},
 };
 use anyhow::{Context, Result};
@@ -105,24 +106,30 @@ impl DataStore {
         handle_query_result(result)
     }
 
-    pub fn load_or_initialize_nft(&mut self, base: &EventBase, nft_id: &NftId) -> Nft {
+    pub fn load_or_initialize_nft(
+        &mut self,
+        base: &EventBase,
+        nft_id: &NftId,
+        tx: TxDetails,
+    ) -> Nft {
+        // TODO - get Uri
         match self.load_nft(nft_id) {
             Some(nft) => nft,
             None => {
                 tracing::debug!("new nft {:?}", nft_id);
-                self.initialize_nft(base, nft_id)
+                self.initialize_nft(base, nft_id, tx)
             }
         }
     }
 
-    pub fn initialize_nft(&mut self, base: &EventBase, nft_id: &NftId) -> Nft {
+    pub fn initialize_nft(&mut self, base: &EventBase, nft_id: &NftId, tx: TxDetails) -> Nft {
         // Check for contract (currently happening if new Nft is detected).
         // We may want a more efficient way to determine if a contract has
         // already been indexed.
         let _ = self.load_or_initialize_contract(base);
         // We don't save_nft yet, just construct and return.
         // User is reponsible to call save_nft.
-        Nft::build_from(base, nft_id)
+        Nft::build_from(base, nft_id, tx)
     }
 
     pub fn load_or_initialize_contract(&mut self, base: &EventBase) -> TokenContract {
@@ -230,7 +237,12 @@ mod tests {
             address: base.contract_address,
             token_id: U256::from(123),
         };
-        let nft = Nft::build_from(&base, &token);
+        let tx = TxDetails {
+            hash: H256::from_low_u64_be(1),
+            from: Address::from(1).0,
+            to: Some(Address::from(2).0),
+        };
+        let nft = Nft::build_from(&base, &token, tx);
         store.save_nft(&nft);
         assert_eq!(store.load_nft(&token).unwrap(), nft);
     }
@@ -243,9 +255,14 @@ mod tests {
             address: base.contract_address,
             token_id: U256::from(123),
         };
+        let tx = TxDetails {
+            hash: H256::from_low_u64_be(1),
+            from: Address::from(1).0,
+            to: Some(Address::from(2).0),
+        };
         assert_eq!(
-            store.load_or_initialize_nft(&base, &token),
-            store.initialize_nft(&base, &token)
+            store.load_or_initialize_nft(&base, &token, tx),
+            store.initialize_nft(&base, &token, tx)
         );
     }
 
