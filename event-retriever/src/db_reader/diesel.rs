@@ -14,6 +14,7 @@ use crate::db_reader::{
 };
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, sql_query, sql_types::BigInt, Connection, RunQueryDsl};
+use std::collections::btree_map::BTreeMap;
 
 #[derive(Clone, Copy, Debug)]
 pub struct BlockRange {
@@ -23,6 +24,41 @@ pub struct BlockRange {
 
 pub struct EventSource {
     client: PgConnection,
+}
+
+pub type BlockNum = u64;
+pub type TxIndex = u64;
+pub type LogIndex = u64;
+#[derive(Default, PartialEq, Debug)]
+pub struct BlockEvents {
+    /// Ordered map of EventLogs indexed by TxIndex
+    pub data: BTreeMap<(TxIndex, LogIndex), Vec<NftEvent>>,
+}
+#[derive(Default)]
+pub struct BlockRangeEvents {
+    pub data: BTreeMap<BlockNum, BlockEvents>,
+    /// Total number of events (for logging)
+    pub size: usize,
+}
+
+impl BlockRangeEvents {
+    fn new(events: Vec<NftEvent>) -> Self {
+        let mut result = Self {
+            data: BTreeMap::new(),
+            size: events.len(),
+        };
+        for event in events {
+            result
+                .data
+                .entry(event.base.block_number)
+                .or_default()
+                .data
+                .entry((event.base.transaction_index, event.base.log_index))
+                .or_default()
+                .push(event)
+        }
+        result
+    }
 }
 
 impl EventSource {
@@ -36,14 +72,15 @@ impl EventSource {
         PgConnection::establish(db_url).context("Error connecting to Diesel Client")
     }
 
-    pub fn get_events_for_block(&mut self, block: i64) -> Result<Vec<NftEvent>> {
-        self.get_events_for_block_range(BlockRange {
+    pub fn get_events_for_block(&mut self, block: i64) -> Result<BlockEvents> {
+        let mut events = self.get_events_for_block_range(BlockRange {
             start: block,
             end: block + 1,
-        })
+        })?;
+        Ok(events.data.remove(&(block as u64)).unwrap_or_default())
     }
 
-    pub fn get_events_for_block_range(&mut self, range: BlockRange) -> Result<Vec<NftEvent>> {
+    pub fn get_events_for_block_range(&mut self, range: BlockRange) -> Result<BlockRangeEvents> {
         let events = vec![
             Box::new(self.get_approvals_for_all_for_block_range(range)?)
                 as Box<dyn Iterator<Item = NftEvent>>,
@@ -53,7 +90,9 @@ impl EventSource {
             Box::new(self.get_erc721_approvals_for_block_range(range)?),
             Box::new(self.get_erc721_transfers_for_block_range(range)?),
         ];
-        Ok(merge_sorted_iters::<NftEvent>(events))
+        // We probably don't need this anymore (or this can construct the map).
+        let ordered_events = merge_sorted_iters::<NftEvent>(events);
+        Ok(BlockRangeEvents::new(ordered_events))
     }
 
     pub fn get_approvals_for_all_for_block_range(
@@ -167,6 +206,7 @@ impl EventSource {
 
 #[cfg(test)]
 mod tests {
+    use maplit::btreemap;
     use std::str::FromStr;
 
     use super::*;
@@ -185,6 +225,7 @@ mod tests {
     fn test_client() -> EventSource {
         EventSource::new(TEST_DB_URL).unwrap()
     }
+
     #[test]
     fn approvals_for_all() {
         // select block_number, count(*) cnt
@@ -317,20 +358,19 @@ mod tests {
         );
     }
 
-    fn is_sorted<T: Ord>(vec: &[T]) -> bool {
-        vec.windows(2).all(|w| w[0] <= w[1])
-    }
+    // fn is_sorted<T: Ord>(vec: &[T]) -> bool {
+    //     vec.windows(2).all(|w| w[0] <= w[1])
+    // }
     #[test]
     fn get_events_for_block() {
         // This test uses a block 15_001_141 containing more than 1 relevant event type
         // This test also demonstrates correctness of Diesel EVM Types.
         let mut client = EventSource::new(TEST_DB_URL).unwrap();
-        let batch_transfers: Vec<_> = client.get_events_for_block(15_001_141).unwrap();
-        assert!(is_sorted(batch_transfers.as_slice()));
+        let batch_transfers: BlockEvents = client.get_events_for_block(15_001_141).unwrap();
         assert_eq!(
             batch_transfers,
-            vec![
-                NftEvent {
+            BlockEvents {
+                data: btreemap! {(0, 0) => vec![NftEvent {
                     base: EventBase {
                         block_number: 15001141,
                         log_index: 0,
@@ -347,8 +387,7 @@ mod tests {
                             .unwrap(),
                         token_id: U256::from(0)
                     })
-                },
-                NftEvent {
+                }], (2, 1) => vec![NftEvent {
                     base: EventBase {
                         block_number: 15001141,
                         log_index: 1,
@@ -365,8 +404,7 @@ mod tests {
                             .unwrap(),
                         approved: true
                     })
-                },
-                NftEvent {
+                }], (38, 2) => vec![NftEvent {
                     base: EventBase {
                         block_number: 15001141,
                         log_index: 2,
@@ -383,8 +421,8 @@ mod tests {
                             .unwrap(),
                         token_id: U256::from(0)
                     })
-                }
-            ]
+                }] }
+            }
         );
     }
 }
