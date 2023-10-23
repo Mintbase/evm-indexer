@@ -60,7 +60,7 @@ pub struct Nft {
 }
 
 impl Nft {
-    pub fn build_from(base: &EventBase, nft_id: &NftId, tx: TxDetails) -> Self {
+    pub fn build_from(base: &EventBase, nft_id: &NftId, tx: &TxDetails) -> Self {
         Self {
             contract_address: nft_id.address.into(),
             token_id: nft_id.token_id.into(),
@@ -115,7 +115,7 @@ impl TokenContract {
     }
 }
 
-#[derive(Queryable, Selectable, Insertable, AsChangeset)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset, Clone)]
 #[diesel(table_name = transactions)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Transaction {
@@ -188,7 +188,7 @@ mod tests {
         };
 
         assert_eq!(
-            Nft::build_from(&base, &nft_id, tx),
+            Nft::build_from(&base, &nft_id, &tx),
             Nft {
                 contract_address: nft_id.address.into(),
                 token_id: nft_id.token_id.into(),

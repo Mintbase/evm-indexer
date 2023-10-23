@@ -34,17 +34,17 @@ impl From<ethers::types::Transaction> for TxDetails {
 }
 
 // TODO (Cost Optimization): on the number of `indices`.
-// Example: QuickNode API credits for
-// - eth_getBlockReceipts                    is 59 while
-// - eth_getTransactionByBlockNumberAndIndex is 2
-// So when indices.len() < 59/2 its cheaper to get them individually.
+//  Example: QuickNode API credits for
+//  - eth_getBlockReceipts                    is 59 while
+//  - eth_getTransactionByBlockNumberAndIndex is 2
+//  So when indices.len() < 59/2 its cheaper to get them individually.
 
 // TODO - make a blocks table for timestamps.
-// let block_time = eth_client
-//     .get_block(block)
-//     .await?
-//     .expect("block {block} not found")
-//     .timestamp;
+//  let block_time = eth_client
+//      .get_block(block)
+//      .await?
+//      .expect("block {block} not found")
+//      .timestamp;
 pub async fn get_block_receipts(
     eth_client: &Provider<Http>,
     block: u64,
@@ -67,7 +67,7 @@ pub async fn get_block_receipts(
             })
             .collect()),
         Err(_) => {
-            // Uses: eth_getTransactionByBlockNumberAndIndex (Suported by all nodes)
+            // Uses: eth_getTransactionByBlockNumberAndIndex (Supported by all nodes)
             // Likely that the provider does not support the first method.
             let mut result = HashMap::new();
             let mut handles = vec![];

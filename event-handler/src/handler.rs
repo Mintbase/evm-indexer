@@ -38,7 +38,7 @@ impl EventHandler {
         tracing::debug!("Retrieved {} events for {:?}", event_map.size, range);
         let mut transaction_updates = Vec::new();
         for (block, block_events) in event_map.data.into_iter() {
-            let mut tx_data = get_block_receipts(
+            let tx_data = get_block_receipts(
                 &self.eth_client,
                 block,
                 block_events.data.keys().cloned().map(|k| k.0).collect(),
@@ -53,9 +53,7 @@ impl EventHandler {
             );
             // TODO - Write (block_number, index, hash) to Transactions table.
             for ((tidx, _lidx), tx_events) in block_events.data {
-                let tx = tx_data
-                    .remove(&tidx)
-                    .expect("no transaction at index {tidx}");
+                let tx = tx_data.get(&tidx)?;
                 for NftEvent { base, meta } in tx_events.into_iter() {
                     // TODO - fetch transaction hashes for block.
                     //  eth_getTransactionByBlockNumberAndIndex OR
@@ -77,7 +75,12 @@ impl EventHandler {
         }
         Ok(())
     }
-    fn handle_erc721_approval(&mut self, base: EventBase, approval: Erc721Approval, tx: TxDetails) {
+    fn handle_erc721_approval(
+        &mut self,
+        base: EventBase,
+        approval: Erc721Approval,
+        tx: &TxDetails,
+    ) {
         tracing::debug!("Processing {:?} of {:?}", approval, base.contract_address);
         let nft_id = NftId {
             address: base.contract_address,
@@ -101,7 +104,12 @@ impl EventHandler {
         self.nft_updates.insert(nft_id, nft);
     }
 
-    fn handle_erc721_transfer(&mut self, base: EventBase, transfer: Erc721Transfer, tx: TxDetails) {
+    fn handle_erc721_transfer(
+        &mut self,
+        base: EventBase,
+        transfer: Erc721Transfer,
+        tx: &TxDetails,
+    ) {
         tracing::debug!("Processing {:?} of {:?}", transfer, base.contract_address);
         let nft_id = NftId {
             address: base.contract_address,
@@ -208,7 +216,7 @@ mod tests {
             ),
         };
         // Approval before token existance (handled the way the event said)
-        handler.handle_erc721_approval(base, approval, tx);
+        handler.handle_erc721_approval(base, approval, &tx);
         let nft = handler.nft_updates.get(&token).unwrap();
         assert_eq!(
             Address::expect_from(nft.clone().approved.unwrap()),
@@ -221,7 +229,7 @@ mod tests {
                 approved: Address::zero(),
                 id: token.token_id,
             },
-            tx,
+            &tx,
         );
         let nft = handler.nft_updates.get(&token).unwrap();
         assert_eq!(nft.approved, None);
@@ -258,7 +266,7 @@ mod tests {
                     .0,
             ),
         };
-        handler.handle_erc721_transfer(base, transfer, tx);
+        handler.handle_erc721_transfer(base, transfer, &tx);
 
         assert_eq!(
             handler.nft_updates.get(&token).unwrap(),
@@ -292,7 +300,7 @@ mod tests {
                 to: from,
                 token_id,
             },
-            tx,
+            &tx,
         );
 
         assert_eq!(
@@ -328,7 +336,7 @@ mod tests {
                 to: Address::zero(),
                 token_id,
             },
-            tx,
+            &tx,
         );
         assert_eq!(
             handler.nft_updates.get(&token).unwrap(),

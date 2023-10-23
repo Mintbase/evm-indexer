@@ -110,7 +110,7 @@ impl DataStore {
         &mut self,
         base: &EventBase,
         nft_id: &NftId,
-        tx: TxDetails,
+        tx: &TxDetails,
     ) -> Nft {
         // TODO - get Uri
         match self.load_nft(nft_id) {
@@ -122,13 +122,13 @@ impl DataStore {
         }
     }
 
-    pub fn initialize_nft(&mut self, base: &EventBase, nft_id: &NftId, tx: TxDetails) -> Nft {
+    pub fn initialize_nft(&mut self, base: &EventBase, nft_id: &NftId, tx: &TxDetails) -> Nft {
         // Check for contract (currently happening if new Nft is detected).
         // We may want a more efficient way to determine if a contract has
         // already been indexed.
         let _ = self.load_or_initialize_contract(base);
         // We don't save_nft yet, just construct and return.
-        // User is reponsible to call save_nft.
+        // User is responsible to call save_nft.
         Nft::build_from(base, nft_id, tx)
     }
 
@@ -242,7 +242,7 @@ mod tests {
             from: Address::from(1).0,
             to: Some(Address::from(2).0),
         };
-        let nft = Nft::build_from(&base, &token, tx);
+        let nft = Nft::build_from(&base, &token, &tx);
         store.save_nft(&nft);
         assert_eq!(store.load_nft(&token).unwrap(), nft);
     }
@@ -261,8 +261,8 @@ mod tests {
             to: Some(Address::from(2).0),
         };
         assert_eq!(
-            store.load_or_initialize_nft(&base, &token, tx),
-            store.initialize_nft(&base, &token, tx)
+            store.load_or_initialize_nft(&base, &token, &tx),
+            store.initialize_nft(&base, &token, &tx)
         );
     }
 
