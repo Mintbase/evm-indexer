@@ -8,7 +8,7 @@ CREATE TABLE transactions
     index        int8      not null,
     hash         bytea     not null,
     "from"       bytea     not null,
-    "to"           bytea,
+    "to"         bytea,
     primary key (block_number, index)
 );
 
