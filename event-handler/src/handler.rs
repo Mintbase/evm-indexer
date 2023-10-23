@@ -53,7 +53,7 @@ impl EventHandler {
             );
             // TODO - Write (block_number, index, hash) to Transactions table.
             for ((tidx, _lidx), tx_events) in block_events.data {
-                let tx = tx_data.get(&tidx)?;
+                let tx = tx_data.get(&tidx).expect("receipt known to exist!");
                 for NftEvent { base, meta } in tx_events.into_iter() {
                     // TODO - fetch transaction hashes for block.
                     //  eth_getTransactionByBlockNumberAndIndex OR
