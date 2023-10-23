@@ -29,17 +29,21 @@ impl EventHandler {
         })
     }
     pub fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
-        let events = self.source.get_events_for_block_range(range)?;
-        tracing::debug!("Retrieved {} events for {:?}", events.len(), range);
-        for NftEvent { base, meta } in events.into_iter() {
+        let event_map = self.source.get_events_for_block_range(range)?;
+        tracing::debug!("Retrieved {} events for {:?}", event_map.size, range);
+        for (_block, block_events) in event_map.data.into_iter() {
             // TODO - fetch transaction hashes for block.
             //  eth_getTransactionByBlockNumberAndIndex OR
             //  eth_getBlockByNumber (with true flag for hashes)
-            match meta {
-                EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a),
-                EventMeta::Erc721Transfer(t) => self.handle_erc721_transfer(base, t),
-                _ => continue,
-            };
+            for ((_tidx, _lidx), tx_events) in block_events.data {
+                for NftEvent { base, meta } in tx_events.into_iter() {
+                    match meta {
+                        EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a),
+                        EventMeta::Erc721Transfer(t) => self.handle_erc721_transfer(base, t),
+                        _ => continue,
+                    };
+                }
+            }
         }
         // drain memory into database.
         for (_, nft) in self.nft_updates.drain() {
