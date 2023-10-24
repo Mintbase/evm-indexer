@@ -158,11 +158,7 @@ impl DataStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        models::{Nft, TokenContract, Transaction},
-        schema::{approval_for_all, contract_abis, nfts, token_contracts, transactions},
-        store::{DataStore, NftId},
-    };
+    use crate::schema::contract_abis;
     use diesel::{QueryDsl, RunQueryDsl};
     use eth::{
         rpc::TxDetails,
