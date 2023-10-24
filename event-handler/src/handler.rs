@@ -53,9 +53,6 @@ impl EventHandler {
             for ((tidx, _lidx), tx_events) in block_events {
                 let tx = tx_data.get(&tidx).expect("receipt known to exist!");
                 for NftEvent { base, meta } in tx_events.into_iter() {
-                    // TODO - fetch transaction hashes for block.
-                    //  eth_getTransactionByBlockNumberAndIndex OR
-                    //  eth_getBlockByNumber (with true flag for hashes)
                     match meta {
                         EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a, tx),
                         EventMeta::Erc721Transfer(t) => self.handle_erc721_transfer(base, t, tx),
