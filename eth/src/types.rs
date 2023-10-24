@@ -7,10 +7,9 @@ use diesel::{
     sql_types::{Binary, Numeric, SqlType},
     Queryable,
 };
-use ethers::types::H256;
 use ethers::{
     abi::ethereum_types::FromDecStrErr,
-    types::{H160, U256 as Uint256},
+    types::{H160, H256, U256 as Uint256},
 };
 use std::str::FromStr;
 
