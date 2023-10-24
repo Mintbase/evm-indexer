@@ -62,7 +62,7 @@ pub struct Nft {
 }
 
 impl Nft {
-    pub fn build_from(base: &EventBase, nft_id: &NftId) -> Self {
+    pub fn build_from(base: &EventBase, nft_id: &NftId, tx: &TxDetails) -> Self {
         Self {
             contract_address: nft_id.address.into(),
             token_id: nft_id.token_id.into(),
@@ -77,8 +77,7 @@ impl Nft {
                 .expect("i64 transaction_index"),
             burn_block: None,
             burn_tx: None,
-            // TODO - Use tx.from here
-            minter: vec![],
+            minter: tx.from.into(),
             approved: None,
             json: None,
         }
@@ -144,6 +143,7 @@ impl Transaction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use eth::types::Bytes32;
 
     #[test]
     fn token_contract_impls() {
@@ -182,9 +182,15 @@ mod tests {
             address: contract_address,
             token_id: U256::from(123),
         };
+        let from = Address::from(1);
+        let tx = TxDetails {
+            hash: Bytes32::from(1),
+            from,
+            to: Some(Address::from(2)),
+        };
 
         assert_eq!(
-            Nft::build_from(&base, &nft_id),
+            Nft::build_from(&base, &nft_id, &tx),
             Nft {
                 contract_address: nft_id.address.into(),
                 token_id: nft_id.token_id.into(),
@@ -196,7 +202,7 @@ mod tests {
                 mint_tx: base.transaction_index.try_into().unwrap(),
                 burn_block: None,
                 burn_tx: None,
-                minter: vec![],
+                minter: from.into(),
                 approved: None,
                 json: None,
             }
