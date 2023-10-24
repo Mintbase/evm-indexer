@@ -157,6 +157,7 @@ impl DataStore {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::{
         models::{Nft, TokenContract, Transaction},
         schema::{approval_for_all, contract_abis, nfts, token_contracts, transactions},
