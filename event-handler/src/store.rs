@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection, RunQueryDsl};
-use eth::types::Address;
+use eth::{rpc::TxDetails, types::Address};
 use event_retriever::db_reader::models::EventBase;
 
 pub struct DataStore {
@@ -116,24 +116,30 @@ impl DataStore {
         handle_query_result(result)
     }
 
-    pub fn load_or_initialize_nft(&mut self, base: &EventBase, nft_id: &NftId) -> Nft {
+    pub fn load_or_initialize_nft(
+        &mut self,
+        base: &EventBase,
+        nft_id: &NftId,
+        tx: &TxDetails,
+    ) -> Nft {
+        // TODO - get Uri
         match self.load_nft(nft_id) {
             Some(nft) => nft,
             None => {
                 tracing::debug!("new nft {:?}", nft_id);
-                self.initialize_nft(base, nft_id)
+                self.initialize_nft(base, nft_id, tx)
             }
         }
     }
 
-    pub fn initialize_nft(&mut self, base: &EventBase, nft_id: &NftId) -> Nft {
+    pub fn initialize_nft(&mut self, base: &EventBase, nft_id: &NftId, tx: &TxDetails) -> Nft {
         // Check for contract (currently happening if new Nft is detected).
         // We may want a more efficient way to determine if a contract has
         // already been indexed.
         let _ = self.load_or_initialize_contract(base);
         // We don't save_nft yet, just construct and return.
-        // User is reponsible to call save_nft.
-        Nft::build_from(base, nft_id)
+        // User is responsible to call save_nft.
+        Nft::build_from(base, nft_id, tx)
     }
 
     pub fn load_or_initialize_contract(&mut self, base: &EventBase) -> TokenContract {
@@ -151,13 +157,12 @@ impl DataStore {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::{
-        models::{Nft, TokenContract},
+        models::{Nft, TokenContract, Transaction},
         schema::{approval_for_all, contract_abis, nfts, token_contracts, transactions},
         store::{DataStore, NftId},
     };
-    use diesel::RunQueryDsl;
+    use diesel::{QueryDsl, RunQueryDsl};
     use eth::{
         rpc::TxDetails,
         types::{Address, Bytes32, U256},
@@ -243,7 +248,12 @@ mod tests {
             address: base.contract_address,
             token_id: U256::from(123),
         };
-        let nft = Nft::build_from(&base, &token);
+        let tx = TxDetails {
+            hash: Bytes32::from(1),
+            from: Address::from(1),
+            to: Some(Address::from(2)),
+        };
+        let nft = Nft::build_from(&base, &token, &tx);
         store.save_nft(&nft);
         assert_eq!(store.load_nft(&token).unwrap(), nft);
     }
@@ -256,9 +266,14 @@ mod tests {
             address: base.contract_address,
             token_id: U256::from(123),
         };
+        let tx = TxDetails {
+            hash: Bytes32::from(1),
+            from: Address::from(1),
+            to: Some(Address::from(2)),
+        };
         assert_eq!(
-            store.load_or_initialize_nft(&base, &token),
-            store.initialize_nft(&base, &token)
+            store.load_or_initialize_nft(&base, &token, &tx),
+            store.initialize_nft(&base, &token, &tx)
         );
     }
 
