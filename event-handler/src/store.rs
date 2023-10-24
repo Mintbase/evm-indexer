@@ -4,8 +4,8 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection, RunQueryDsl};
+use eth::types::Address;
 use event_retriever::db_reader::models::EventBase;
-use shared::eth::Address;
 
 pub struct DataStore {
     client: PgConnection,
@@ -134,8 +134,8 @@ mod tests {
         store::{DataStore, NftId},
     };
     use diesel::RunQueryDsl;
+    use eth::types::{Address, U256};
     use event_retriever::db_reader::models::EventBase;
-    use shared::eth::{Address, U256};
 
     static TEST_STORE_URL: &str = "postgresql://postgres:postgres@localhost:5432/store";
 

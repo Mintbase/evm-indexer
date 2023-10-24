@@ -14,7 +14,7 @@ diesel = { version = "2.1.1", features = [
     "chrono",
 ] }
 event-retriever = { path = "../event-retriever" }
-shared = { path = "../shared" }
+eth = { path = "../eth" }
 tracing = "0.1.37"
 serde_json = "1.0.107"
 bigdecimal = { version = "0.3.1", features = ["serde"] }

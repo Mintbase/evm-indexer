@@ -6,7 +6,7 @@ use crate::db_reader::{
     schema::*,
 };
 use diesel::{Queryable, QueryableByName, Selectable};
-use shared::eth::{Address, U256};
+use eth::types::{Address, U256};
 
 pub trait EvmEventTable {
     fn block_number(&self) -> u64;
@@ -54,7 +54,7 @@ pub(crate) struct DbErc1155TransferBatch {
     log_index: i64,
     #[diesel(sql_type = diesel::sql_types::BigInt)]
     transaction_index: i64,
-    #[diesel(sql_type = shared::eth::Address)]
+    #[diesel(sql_type = eth::types::Address)]
     address: Address,
     #[diesel(sql_type = Address)]
     operator: Address,
@@ -206,7 +206,7 @@ impl_evm_event_table!(DbErc721Transfer);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::eth::U256;
+    use eth::types::U256;
     use std::panic;
 
     fn n_addresses(n: u64) -> Vec<Address> {

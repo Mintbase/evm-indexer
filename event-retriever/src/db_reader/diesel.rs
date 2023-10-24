@@ -192,7 +192,7 @@ mod tests {
 
     use super::*;
     use crate::db_reader::models::*;
-    use shared::eth::{Address, U256};
+    use eth::types::{Address, U256};
 
     static TEST_DB_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";
 
