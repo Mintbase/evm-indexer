@@ -59,7 +59,7 @@ impl EventHandler {
                     match meta {
                         EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a, tx),
                         EventMeta::Erc721Transfer(t) => self.handle_erc721_transfer(base, t, tx),
-                        _ => unimplemented!(),
+                        _ => unimplemented!("unhandled event!"),
                     };
                 }
             }
