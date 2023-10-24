@@ -24,8 +24,7 @@ fn handle_insert_result(result: QueryResult<usize>, expected_updates: usize, con
             }
         }
         Err(err) => {
-            tracing::error!("execution error {:?}", err);
-            panic!("unhandled query result error")
+            panic!("unhandled query result error on {}: {:?}", context, err)
         }
     }
 }
@@ -34,8 +33,7 @@ fn handle_query_result<T>(result: QueryResult<T>) -> T {
     match result {
         Ok(value) => value,
         Err(err) => {
-            tracing::error!("execution error {:?}", err);
-            panic!("unhandled query result error")
+            panic!("unhandled query result error: {:?}", err)
         }
     }
 }
@@ -52,13 +50,23 @@ impl DataStore {
     }
 
     pub fn save_transactions(&mut self, txs: Vec<Transaction>) {
-        let expected_inserts = txs.len();
-        let result = diesel::insert_into(transactions::dsl::transactions)
-            .values(txs)
-            .on_conflict((transactions::block_number, transactions::index))
-            .do_nothing()
-            .execute(&mut self.client);
-        handle_insert_result(result, expected_inserts, "save_transactions".to_string())
+        // These inserts must be broken into chunks because of:
+        // DatabaseError(UnableToSendCommand, "number of parameters must be between 0 and 65535\n")
+        let chunk_size = 10_000;
+        tracing::info!(
+            "saving {} EVM transactions over {} SQL transactions",
+            txs.len(),
+            txs.len() / chunk_size
+        );
+        for chunk in txs.chunks(chunk_size) {
+            let expected_inserts = chunk.len();
+            let result = diesel::insert_into(transactions::dsl::transactions)
+                .values(chunk.to_vec())
+                .on_conflict((transactions::block_number, transactions::index))
+                .do_nothing()
+                .execute(&mut self.client);
+            handle_insert_result(result, expected_inserts, "save_transactions".to_string())
+        }
     }
 
     pub fn save_nft(&mut self, nft: &Nft) {
