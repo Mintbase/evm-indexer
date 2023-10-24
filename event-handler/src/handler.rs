@@ -5,11 +5,11 @@ use crate::{
     store::DataStore,
 };
 use anyhow::{Context, Result};
+use eth::types::Address;
 use event_retriever::db_reader::{
     diesel::{BlockRange, EventSource},
     models::*,
 };
-use shared::eth::Address;
 
 pub struct EventHandler {
     /// Source of events for processing
@@ -118,8 +118,8 @@ impl EventHandler {
 mod tests {
     use super::*;
     use crate::models::NftId;
+    use eth::types::{Address, U256};
     use event_retriever::db_reader::diesel::BlockRange;
-    use shared::eth::{Address, U256};
     use tracing::Level;
     static TEST_SOURCE_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";
     static TEST_STORE_URL: &str = "postgresql://postgres:postgres@localhost:5432/store";

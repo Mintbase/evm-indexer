@@ -2,9 +2,9 @@ use crate::schema::*;
 use bigdecimal::BigDecimal;
 use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
 use diesel::{AsChangeset, Insertable, Queryable, Selectable};
+use eth::types::{Address, U256};
 use event_retriever::db_reader::models::EventBase;
 use serde_json::Value;
-use shared::eth::{Address, U256};
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct NftId {
