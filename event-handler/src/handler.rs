@@ -30,17 +30,16 @@ impl EventHandler {
     }
     pub fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
         let event_map = self.source.get_events_for_block_range(range)?;
-        tracing::debug!("Retrieved {} events for {:?}", event_map.size, range);
-        for (_block, block_events) in event_map.data.into_iter() {
+        for (_block, block_events) in event_map.into_iter() {
             // TODO - fetch transaction hashes for block.
             //  eth_getTransactionByBlockNumberAndIndex OR
             //  eth_getBlockByNumber (with true flag for hashes)
-            for ((_tidx, _lidx), tx_events) in block_events.data {
+            for ((_tidx, _lidx), tx_events) in block_events {
                 for NftEvent { base, meta } in tx_events.into_iter() {
                     match meta {
                         EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a),
                         EventMeta::Erc721Transfer(t) => self.handle_erc721_transfer(base, t),
-                        _ => continue,
+                        _ => unimplemented!("unhandled event!"),
                     };
                 }
             }

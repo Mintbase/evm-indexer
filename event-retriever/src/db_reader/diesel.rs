@@ -29,37 +29,8 @@ pub struct EventSource {
 pub type BlockNum = u64;
 pub type TxIndex = u64;
 pub type LogIndex = u64;
-#[derive(Default, PartialEq, Debug)]
-pub struct BlockEvents {
-    /// Ordered map of EventLogs indexed by TxIndex
-    pub data: BTreeMap<(TxIndex, LogIndex), Vec<NftEvent>>,
-}
-#[derive(Default)]
-pub struct BlockRangeEvents {
-    pub data: BTreeMap<BlockNum, BlockEvents>,
-    /// Total number of events (for logging)
-    pub size: usize,
-}
-
-impl BlockRangeEvents {
-    fn new(events: Vec<NftEvent>) -> Self {
-        let mut result = Self {
-            data: BTreeMap::new(),
-            size: events.len(),
-        };
-        for event in events {
-            result
-                .data
-                .entry(event.base.block_number)
-                .or_default()
-                .data
-                .entry((event.base.transaction_index, event.base.log_index))
-                .or_default()
-                .push(event)
-        }
-        result
-    }
-}
+pub type BlockEvents = BTreeMap<(TxIndex, LogIndex), Vec<NftEvent>>;
+pub type BlockRangeEvents = BTreeMap<BlockNum, BlockEvents>;
 
 impl EventSource {
     pub fn new(connection: &str) -> Result<Self> {
@@ -77,7 +48,7 @@ impl EventSource {
             start: block,
             end: block + 1,
         })?;
-        Ok(events.data.remove(&(block as u64)).unwrap_or_default())
+        Ok(events.remove(&(block as u64)).unwrap_or_default())
     }
 
     pub fn get_events_for_block_range(&mut self, range: BlockRange) -> Result<BlockRangeEvents> {
@@ -92,7 +63,17 @@ impl EventSource {
         ];
         // We probably don't need this anymore (or this can construct the map).
         let ordered_events = merge_sorted_iters::<NftEvent>(events);
-        Ok(BlockRangeEvents::new(ordered_events))
+        tracing::debug!("Retrieved {} events for {:?}", ordered_events.len(), range);
+        let mut result: BlockRangeEvents = BTreeMap::new();
+        for event in ordered_events {
+            result
+                .entry(event.base.block_number)
+                .or_default()
+                .entry((event.base.transaction_index, event.base.log_index))
+                .or_default()
+                .push(event)
+        }
+        Ok(result)
     }
 
     pub fn get_approvals_for_all_for_block_range(
@@ -369,25 +350,28 @@ mod tests {
         let batch_transfers: BlockEvents = client.get_events_for_block(15_001_141).unwrap();
         assert_eq!(
             batch_transfers,
-            BlockEvents {
-                data: btreemap! {(0, 0) => vec![NftEvent {
-                    base: EventBase {
-                        block_number: 15001141,
-                        log_index: 0,
-                        transaction_index: 0,
-                        contract_address: Address::from_str(
-                            "0xba100000625a3754423978a60c9317c58a424e3d"
-                        )
-                        .unwrap()
-                    },
-                    meta: EventMeta::Erc721Transfer(Erc721Transfer {
-                        from: Address::from_str("0x527f31b668aa54e1be2a5a5b511442ec24ae5540")
-                            .unwrap(),
-                        to: Address::from_str("0x0450cd91ef89740410685f5e618eb4570fcce009")
-                            .unwrap(),
-                        token_id: U256::from(0)
-                    })
-                }], (2, 1) => vec![NftEvent {
+            btreemap! {
+                (0, 0) => vec![
+                    NftEvent {
+                        base: EventBase {
+                            block_number: 15001141,
+                            log_index: 0,
+                            transaction_index: 0,
+                            contract_address: Address::from_str(
+                                "0xba100000625a3754423978a60c9317c58a424e3d"
+                            )
+                            .unwrap()
+                        },
+                        meta: EventMeta::Erc721Transfer(Erc721Transfer {
+                            from: Address::from_str("0x527f31b668aa54e1be2a5a5b511442ec24ae5540")
+                                .unwrap(),
+                            to: Address::from_str("0x0450cd91ef89740410685f5e618eb4570fcce009")
+                                .unwrap(),
+                            token_id: U256::from(0)
+                        })
+                    }],
+            (2, 1) => vec![
+                NftEvent {
                     base: EventBase {
                         block_number: 15001141,
                         log_index: 1,
@@ -404,7 +388,9 @@ mod tests {
                             .unwrap(),
                         approved: true
                     })
-                }], (38, 2) => vec![NftEvent {
+                }],
+            (38, 2) => vec![
+                NftEvent {
                     base: EventBase {
                         block_number: 15001141,
                         log_index: 2,
@@ -421,7 +407,7 @@ mod tests {
                             .unwrap(),
                         token_id: U256::from(0)
                     })
-                }] }
+                }]
             }
         );
     }
