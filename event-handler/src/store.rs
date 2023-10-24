@@ -54,7 +54,7 @@ impl DataStore {
         // DatabaseError(UnableToSendCommand, "number of parameters must be between 0 and 65535\n")
         let chunk_size = 10_000;
         tracing::info!(
-            "saving {} transactions over {} transactions",
+            "saving {} EVM transactions over {} SQL transactions",
             txs.len(),
             txs.len() / chunk_size
         );
