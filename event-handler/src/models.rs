@@ -1,8 +1,10 @@
 use crate::schema::*;
 use bigdecimal::BigDecimal;
-use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
 use diesel::{AsChangeset, Insertable, Queryable, Selectable};
-use eth::types::{Address, U256};
+use eth::{
+    rpc::TxDetails,
+    types::{Address, U256},
+};
 use event_retriever::db_reader::models::EventBase;
 use serde_json::Value;
 
@@ -116,14 +118,27 @@ impl TokenContract {
     }
 }
 
-#[derive(Queryable, Selectable, Insertable)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset, Clone)]
 #[diesel(table_name = transactions)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub(crate) struct Transaction {
+pub struct Transaction {
     block_number: i64,
     index: i64,
     hash: Vec<u8>,
-    block_time: NaiveDateTime,
+    from: Vec<u8>,
+    to: Option<Vec<u8>>,
+}
+
+impl Transaction {
+    pub fn new(block: u64, index: u64, details: TxDetails) -> Self {
+        Self {
+            block_number: block as i64,
+            index: index as i64,
+            hash: details.hash.into(),
+            from: details.from.into(),
+            to: details.to.map(Address::into),
+        }
+    }
 }
 
 #[cfg(test)]

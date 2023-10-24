@@ -73,7 +73,10 @@ diesel::table! {
         block_number -> Int8,
         index -> Int8,
         hash -> Bytea,
-        block_time -> Timestamp,
+        from -> Bytea,
+        to -> Nullable<Bytea>,
+        // This belongs in a blocks table.
+        // block_time -> Timestamp,
     }
 }
 

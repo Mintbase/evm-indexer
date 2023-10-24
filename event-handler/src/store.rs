@@ -1,6 +1,6 @@
 use crate::{
     models::*,
-    schema::{approval_for_all, nfts, token_contracts},
+    schema::{approval_for_all, nfts, token_contracts, transactions},
 };
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection, RunQueryDsl};
@@ -11,13 +11,18 @@ pub struct DataStore {
     client: PgConnection,
 }
 
-fn handle_insert_result(result: QueryResult<usize>, context: String) {
+fn handle_insert_result(result: QueryResult<usize>, expected_updates: usize, context: String) {
     match result {
-        Ok(value) => match value {
-            1 => (),
-            0 => panic!("no records inserted on {context}"),
-            _ => unreachable!("database constrained by primary key"),
-        },
+        Ok(value) => {
+            if value != expected_updates {
+                tracing::warn!(
+                    "unexpected update number for {} expected {} got {}",
+                    context,
+                    expected_updates,
+                    value
+                )
+            }
+        }
         Err(err) => {
             tracing::error!("execution error {:?}", err);
             panic!("unhandled query result error")
@@ -46,6 +51,16 @@ impl DataStore {
         PgConnection::establish(db_url).context("Error connecting to Diesel Client")
     }
 
+    pub fn save_transactions(&mut self, txs: Vec<Transaction>) {
+        let expected_inserts = txs.len();
+        let result = diesel::insert_into(transactions::dsl::transactions)
+            .values(txs)
+            .on_conflict((transactions::block_number, transactions::index))
+            .do_nothing()
+            .execute(&mut self.client);
+        handle_insert_result(result, expected_inserts, "save_transactions".to_string())
+    }
+
     pub fn save_nft(&mut self, nft: &Nft) {
         let result = diesel::insert_into(nfts::dsl::nfts)
             .values(nft)
@@ -53,7 +68,7 @@ impl DataStore {
             .do_update()
             .set(nft)
             .execute(&mut self.client);
-        handle_insert_result(result, format!("save_nft {:?}", nft))
+        handle_insert_result(result, 1, format!("save_nft {:?}", nft))
     }
 
     pub fn save_contract(&mut self, contract: &TokenContract) {
@@ -63,7 +78,7 @@ impl DataStore {
             .do_update()
             .set(contract)
             .execute(&mut self.client);
-        handle_insert_result(result, format!("save_contract {:?}", contract))
+        handle_insert_result(result, 1, format!("save_contract {:?}", contract))
     }
 
     pub fn set_approval_for_all(&mut self, approval: ApprovalForAll) {
@@ -73,7 +88,7 @@ impl DataStore {
             .do_update()
             .set(&approval)
             .execute(&mut self.client);
-        handle_insert_result(result, format!("set_approval_for_all {:?}", approval))
+        handle_insert_result(result, 1, format!("set_approval_for_all {:?}", approval))
     }
 
     pub fn load_nft(&mut self, token: &NftId) -> Option<Nft> {
@@ -128,13 +143,17 @@ impl DataStore {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::{
         models::{Nft, TokenContract},
         schema::{approval_for_all, contract_abis, nfts, token_contracts, transactions},
         store::{DataStore, NftId},
     };
     use diesel::RunQueryDsl;
-    use eth::types::{Address, U256};
+    use eth::{
+        rpc::TxDetails,
+        types::{Address, Bytes32, U256},
+    };
     use event_retriever::db_reader::models::EventBase;
 
     static TEST_STORE_URL: &str = "postgresql://postgres:postgres@localhost:5432/store";
@@ -172,6 +191,40 @@ mod tests {
             transaction_index: 3,
             contract_address: Address::from(1),
         }
+    }
+
+    #[test]
+    fn save_transactions() {
+        let mut store = get_new_store();
+        let details = TxDetails {
+            hash: Bytes32::from(1),
+            from: Address::from(1),
+            to: Some(Address::from(2)),
+        };
+        // First call should not panic or log
+        store.save_transactions(vec![
+            Transaction::new(1, 2, details),
+            Transaction::new(3, 4, details),
+        ]);
+
+        assert_eq!(
+            Ok(2),
+            transactions::dsl::transactions
+                .count()
+                .get_result(&mut store.client)
+        );
+
+        // This call will do nothing.
+        store.save_transactions(vec![
+            // Notice same (block, index) = (1, 2) as above.
+            Transaction::new(1, 2, details),
+        ]);
+        assert_eq!(
+            Ok(2),
+            transactions::dsl::transactions
+                .count()
+                .get_result(&mut store.client)
+        );
     }
 
     #[test]
