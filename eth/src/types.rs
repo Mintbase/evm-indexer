@@ -9,7 +9,7 @@ use diesel::{
 };
 use ethers::{
     abi::ethereum_types::FromDecStrErr,
-    types::{H160, U256 as Uint256},
+    types::{H160, H256, U256 as Uint256},
 };
 use std::str::FromStr;
 
@@ -153,5 +153,101 @@ impl U256 {
             Ok(res) => Ok(U256(res)),
             Err(err) => Err(err),
         }
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SqlType)]
+#[diesel(postgres_type(name = "Bytes32"))]
+pub struct Bytes32(pub H256);
+
+impl FromSql<Bytes32, Pg> for Bytes32 {
+    fn from_sql(bytes: PgValue<'_>) -> deserialize::Result<Self> {
+        Bytes32::try_from(bytes.as_bytes().to_vec()).map_err(|(message, _)| message.into())
+    }
+}
+
+impl Queryable<Binary, Pg> for Bytes32 {
+    type Row = Vec<u8>;
+
+    fn build(row: Self::Row) -> deserialize::Result<Self> {
+        row.try_into().map_err(|(x, _): (&str, _)| x.into())
+    }
+}
+
+impl Bytes32 {
+    pub fn zero() -> Self {
+        Self(H256::zero())
+    }
+
+    /// ! WARNING! This function is meant to be used by Diesel
+    /// for Ethereum address fields encoded in postgres
+    /// as BYTEA type (since there is no fixed length type)
+    pub fn expect_from(value: Vec<u8>) -> Self {
+        Self::try_from(value).expect("address from vec")
+    }
+}
+
+impl From<Bytes32> for Vec<u8> {
+    fn from(value: Bytes32) -> Self {
+        value.0.as_bytes().to_vec()
+    }
+}
+
+impl TryFrom<Vec<u8>> for Bytes32 {
+    type Error = (&'static str, Vec<u8>);
+
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        if value.len() == 32 {
+            Ok(Self(H256::from_slice(value.as_slice())))
+        } else {
+            Err(("Bytes32 bytes must have length 32!", value))
+        }
+    }
+}
+
+impl TryFrom<Option<Vec<u8>>> for Bytes32 {
+    type Error = (&'static str, Vec<u8>);
+
+    fn try_from(value: Option<Vec<u8>>) -> Result<Self, Self::Error> {
+        if let Some(hash) = value {
+            hash.try_into()
+        } else {
+            Err(("Unexpected Null", vec![]))
+        }
+    }
+}
+
+impl From<H256> for Bytes32 {
+    fn from(value: H256) -> Self {
+        Self(value)
+    }
+}
+
+impl FromStr for Bytes32 {
+    type Err = rustc_hex::FromHexError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match H256::from_str(s) {
+            Ok(res) => Ok(Bytes32(res)),
+            Err(err) => Err(err),
+        }
+    }
+}
+
+impl From<u64> for Bytes32 {
+    fn from(value: u64) -> Self {
+        Bytes32(H256::from_low_u64_be(value))
+    }
+}
+
+impl From<[u8; 32]> for Bytes32 {
+    fn from(value: [u8; 32]) -> Self {
+        Bytes32(H256::from(value))
+    }
+}
+
+impl From<Bytes32> for H256 {
+    fn from(value: Bytes32) -> Self {
+        value.0
     }
 }
