@@ -4,7 +4,10 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection, RunQueryDsl};
-use eth::{rpc::TxDetails, types::Address};
+use eth::{
+    rpc::TxDetails,
+    types::{Address, NftId},
+};
 use event_retriever::db_reader::models::EventBase;
 
 pub struct DataStore {

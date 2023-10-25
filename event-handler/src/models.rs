@@ -3,26 +3,10 @@ use bigdecimal::BigDecimal;
 use diesel::{AsChangeset, Insertable, Queryable, Selectable};
 use eth::{
     rpc::TxDetails,
-    types::{Address, U256},
+    types::{Address, NftId},
 };
 use event_retriever::db_reader::models::EventBase;
 use serde_json::Value;
-
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub struct NftId {
-    pub address: Address,
-    pub token_id: U256,
-}
-
-impl NftId {
-    pub fn db_address(&self) -> Vec<u8> {
-        self.address.into()
-    }
-
-    pub fn db_id(&self) -> BigDecimal {
-        self.token_id.into()
-    }
-}
 
 #[derive(Queryable, Selectable, Insertable, AsChangeset, Debug)]
 #[diesel(table_name = approval_for_all)]
@@ -48,6 +32,7 @@ pub(crate) struct ContractAbi {
 pub struct Nft {
     pub contract_address: Vec<u8>,
     pub token_id: BigDecimal,
+    pub token_uri: Option<String>,
     pub owner: Vec<u8>,
     pub last_transfer_block: Option<i64>,
     pub last_transfer_tx: Option<i64>,
@@ -66,6 +51,7 @@ impl Nft {
         Self {
             contract_address: nft_id.address.into(),
             token_id: nft_id.token_id.into(),
+            token_uri: None,
             owner: vec![],
             last_transfer_block: None,
             last_transfer_tx: None,
@@ -93,7 +79,6 @@ pub struct TokenContract {
     name: Option<String>,
     symbol: Option<String>,
     decimals: Option<i16>,
-    token_uri: Option<String>,
     created_block: i64,
     created_tx_index: i64,
     // content_flags -> Nullable<Array<Nullable<ContentFlag>>>,
@@ -108,8 +93,6 @@ impl TokenContract {
             name: None,
             symbol: None,
             decimals: None,
-            // TODO - this should be base_url
-            token_uri: None,
             // assume that the first time a contract is seen is the created block
             created_block: event.block_number.try_into().expect("u64 conversion"),
             created_tx_index: event.transaction_index.try_into().expect("u64 conversion"),
@@ -143,7 +126,7 @@ impl Transaction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use eth::types::Bytes32;
+    use eth::types::{Bytes32, U256};
 
     #[test]
     fn token_contract_impls() {
@@ -162,7 +145,6 @@ mod tests {
                 name: None,
                 symbol: None,
                 decimals: None,
-                token_uri: None,
                 created_block: base.block_number.try_into().unwrap(),
                 created_tx_index: base.transaction_index.try_into().unwrap(),
             }
@@ -194,6 +176,7 @@ mod tests {
             Nft {
                 contract_address: nft_id.address.into(),
                 token_id: nft_id.token_id.into(),
+                token_uri: None,
                 owner: vec![],
                 last_transfer_block: None,
                 last_transfer_tx: None,
