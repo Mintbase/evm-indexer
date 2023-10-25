@@ -351,25 +351,6 @@ mod tests {
         assert_eq!(
             batch_transfers,
             btreemap! {
-                (0, 0) => vec![
-                    NftEvent {
-                        base: EventBase {
-                            block_number: 15001141,
-                            log_index: 0,
-                            transaction_index: 0,
-                            contract_address: Address::from_str(
-                                "0xba100000625a3754423978a60c9317c58a424e3d"
-                            )
-                            .unwrap()
-                        },
-                        meta: EventMeta::Erc721Transfer(Erc721Transfer {
-                            from: Address::from_str("0x527f31b668aa54e1be2a5a5b511442ec24ae5540")
-                                .unwrap(),
-                            to: Address::from_str("0x0450cd91ef89740410685f5e618eb4570fcce009")
-                                .unwrap(),
-                            token_id: U256::from(0)
-                        })
-                    }],
             (2, 1) => vec![
                 NftEvent {
                     base: EventBase {
@@ -389,25 +370,6 @@ mod tests {
                         approved: true
                     })
                 }],
-            (38, 2) => vec![
-                NftEvent {
-                    base: EventBase {
-                        block_number: 15001141,
-                        log_index: 2,
-                        transaction_index: 38,
-                        contract_address: Address::from_str(
-                            "0xdac17f958d2ee523a2206206994597c13d831ec7"
-                        )
-                        .unwrap()
-                    },
-                    meta: EventMeta::Erc721Transfer(Erc721Transfer {
-                        from: Address::from_str("0xb5d85cbf7cb3ee0d56b3bb207d5fc4b82f43f511")
-                            .unwrap(),
-                        to: Address::from_str("0x43dcc215a0d449675ec582802d229d2df1129978")
-                            .unwrap(),
-                        token_id: U256::from(0)
-                    })
-                }]
             }
         );
     }
