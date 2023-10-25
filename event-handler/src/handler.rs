@@ -34,6 +34,10 @@ impl UpdateCache {
         // Write and clear blocks
         db.save_blocks(std::mem::take(&mut self.blocks));
 
+        // Write and clear blocks
+        db.save_blocks(self.blocks.clone());
+        self.blocks = vec![];
+
         // drain memory into database.
         for (_, nft) in self.nfts.drain() {
             // TODO - Batch these updates.

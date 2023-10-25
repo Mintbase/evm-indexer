@@ -78,6 +78,18 @@ impl Client {
         })
     }
 
+    pub async fn get_block(&self, block: u64) -> Result<Option<BlockData>> {
+        let response = self.provider.get_block(block).await?;
+        Ok(match response {
+            Some(ethers_block) => Some(BlockData {
+                /// Could also use client_response for this, but its optional.
+                number: block,
+                time: ethers_block.timestamp.as_u64(),
+            }),
+            None => None,
+        })
+    }
+
     // TODO (Cost Optimization): on the number of `indices`.
     //  Example: QuickNode API credits for
     //  - eth_getBlockReceipts                    is 59 while
