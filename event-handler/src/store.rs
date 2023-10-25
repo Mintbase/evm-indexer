@@ -208,6 +208,9 @@ mod tests {
             diesel::delete(transactions::dsl::transactions)
                 .execute(&mut self.client)
                 .unwrap();
+            diesel::delete(blocks::dsl::blocks)
+                .execute(&mut self.client)
+                .unwrap();
         }
     }
 
