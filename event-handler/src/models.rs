@@ -1,9 +1,11 @@
 use crate::schema::*;
 use bigdecimal::BigDecimal;
+use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
 use diesel::{AsChangeset, Insertable, Queryable, Selectable};
+use eth::types::NftId;
 use eth::{
-    rpc::TxDetails,
-    types::{Address, NftId},
+    rpc::{BlockData, TxDetails},
+    types::Address,
 };
 use event_retriever::db_reader::models::EventBase;
 use serde_json::Value;
@@ -119,6 +121,23 @@ impl Transaction {
             hash: details.hash.into(),
             from: details.from.into(),
             to: details.to.map(Address::into),
+        }
+    }
+}
+
+#[derive(Queryable, Selectable, Insertable, AsChangeset, Clone)]
+#[diesel(table_name = blocks)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct Block {
+    number: i64,
+    time: NaiveDateTime,
+}
+
+impl Block {
+    pub fn new(block: &BlockData) -> Self {
+        Self {
+            number: block.number as i64,
+            time: block.db_time(),
         }
     }
 }

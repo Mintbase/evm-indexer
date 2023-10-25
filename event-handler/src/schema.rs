@@ -75,8 +75,13 @@ diesel::table! {
         hash -> Bytea,
         from -> Bytea,
         to -> Nullable<Bytea>,
-        // This belongs in a blocks table.
-        // block_time -> Timestamp,
+    }
+}
+
+diesel::table! {
+    blocks (number) {
+        number -> Int8,
+        time -> Timestamp,
     }
 }
 
@@ -86,4 +91,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     nfts,
     token_contracts,
     transactions,
+    blocks
 );

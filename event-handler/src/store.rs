@@ -1,11 +1,8 @@
-use crate::{
-    models::*,
-    schema::{approval_for_all, nfts, token_contracts, transactions},
-};
+use crate::{models::*, schema::*};
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection, RunQueryDsl};
 use eth::{
-    rpc::TxDetails,
+    rpc::{BlockData, TxDetails},
     types::{Address, NftId},
 };
 use event_retriever::db_reader::models::EventBase;
@@ -69,6 +66,24 @@ impl DataStore {
                 .do_nothing()
                 .execute(&mut self.client);
             handle_insert_result(result, expected_inserts, "save_transactions".to_string())
+        }
+    }
+
+    pub fn save_blocks(&mut self, blocks: Vec<BlockData>) {
+        let chunk_size = 10_000;
+        tracing::info!(
+            "saving {} EVM blocks over {} SQL transactions",
+            blocks.len(),
+            blocks.len() / chunk_size
+        );
+        for chunk in blocks.chunks(chunk_size) {
+            let expected_inserts = chunk.len();
+            let result = diesel::insert_into(blocks::dsl::blocks)
+                .values(chunk.iter().map(Block::new).collect::<Vec<_>>())
+                .on_conflict(blocks::number)
+                .do_nothing()
+                .execute(&mut self.client);
+            handle_insert_result(result, expected_inserts, "save_blocks".to_string())
         }
     }
 
@@ -236,6 +251,34 @@ mod tests {
             transactions::dsl::transactions
                 .count()
                 .get_result(&mut store.client)
+        );
+    }
+
+    #[test]
+    fn save_blocks() {
+        let mut store = get_new_store();
+        let blocks = vec![
+            BlockData {
+                number: 1,
+                time: 123456789,
+            },
+            BlockData {
+                number: 2,
+                time: 234567891,
+            },
+            BlockData {
+                number: 3,
+                time: 345678912,
+            },
+            BlockData {
+                number: 3,
+                time: 345678912,
+            },
+        ];
+        store.save_blocks(blocks);
+        assert_eq!(
+            Ok(3),
+            blocks::dsl::blocks.count().get_result(&mut store.client)
         );
     }
 
