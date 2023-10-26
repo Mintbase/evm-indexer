@@ -75,6 +75,11 @@ trait RetryGet<T: Send> {
                     if retries >= max_retries {
                         return Err(err);
                     } else {
+                        tracing::debug!(
+                            "failed rpc request attempt {} - trying again in {} seconds",
+                            retries,
+                            wait_secs
+                        );
                         tokio::time::sleep(Duration::from_secs(wait_secs)).await;
                     }
                 }
@@ -113,6 +118,11 @@ struct GetBlockReceipts {
 
 #[async_trait::async_trait]
 impl RetryGet<HashMap<u64, TxDetails>> for GetBlockReceipts {
+    // TODO (Cost Optimization): on the number of `indices`.
+    //  Example: QuickNode API credits for
+    //  - eth_getBlockReceipts                    is 59 while
+    //  - eth_getTransactionByBlockNumberAndIndex is 2
+    //  So when indices.len() < 59/2 its cheaper to get them individually.
     async fn try_get(&self) -> Result<HashMap<u64, TxDetails>> {
         let block = self.block;
 
@@ -138,7 +148,7 @@ impl RetryGet<HashMap<u64, TxDetails>> for GetBlockReceipts {
                 let mut result = HashMap::new();
                 let mut handles = vec![];
 
-                for index in self.indices.iter().map(|i| *i) {
+                for index in self.indices.iter().copied() {
                     // TODO - Call eth_getBlockTransactionCountByNumber and don't request when index > that.
                     let eth_client_clone = self.provider.clone();
                     let handle = tokio::spawn(async move {
@@ -179,7 +189,7 @@ impl Client {
         })
     }
 
-    pub async fn retry_get_block(&self, block: u64) -> Result<Option<BlockData>> {
+    pub async fn get_block(&self, block: u64) -> Result<Option<BlockData>> {
         GetBlock {
             provider: self.provider.clone(),
             block,
@@ -188,35 +198,7 @@ impl Client {
         .await
     }
 
-    pub async fn get_block(&self, block: u64) -> Result<Option<BlockData>> {
-        GetBlock {
-            provider: self.provider.clone(),
-            block,
-        }
-        .try_get()
-        .await
-    }
-
-    // TODO (Cost Optimization): on the number of `indices`.
-    //  Example: QuickNode API credits for
-    //  - eth_getBlockReceipts                    is 59 while
-    //  - eth_getTransactionByBlockNumberAndIndex is 2
-    //  So when indices.len() < 59/2 its cheaper to get them individually.
     pub async fn get_block_receipts(
-        &self,
-        block: u64,
-        indices: HashSet<u64>,
-    ) -> Result<HashMap<u64, TxDetails>> {
-        GetBlockReceipts {
-            provider: self.provider.clone(),
-            block,
-            indices,
-        }
-        .try_get()
-        .await
-    }
-
-    pub async fn retry_get_block_receipts(
         &self,
         block: u64,
         indices: HashSet<u64>,
