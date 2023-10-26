@@ -124,6 +124,8 @@ impl Client {
             .token_uri(token.token_id.0)
             .call()
             .await
+            // Remove Null Bytes: Postgres can't handle them.
+            .map(|uri| uri.replace('\0', ""))
             .map_err(|err| anyhow!(err.to_string()))
     }
 }

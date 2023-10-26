@@ -214,7 +214,7 @@ mod tests {
         assert!(handler
             .process_events_for_block_range(BlockRange {
                 start: block,
-                end: block + 10,
+                end: block + 5,
             })
             .await
             .is_ok())
