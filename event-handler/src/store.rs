@@ -125,7 +125,6 @@ impl DataStore {
         nft_id: &NftId,
         tx: &TxDetails,
     ) -> Nft {
-        // TODO - get Uri
         match self.load_nft(nft_id) {
             Some(nft) => nft,
             None => {
