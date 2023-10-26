@@ -60,74 +60,62 @@ pub struct Client {
     provider: Arc<Provider<Http>>,
 }
 
-impl Client {
-    pub fn new(url: &str) -> Result<Self> {
-        Ok(Self {
-            provider: Arc::new(Provider::<Http>::try_from(url)?),
-        })
-    }
+#[async_trait::async_trait]
+trait RetryGet<T: Send> {
+    async fn try_get(&self) -> Result<T>;
 
-    pub async fn get_block(&self, block: u64) -> Result<Option<BlockData>> {
-        let response = self.provider.get_block(block).await?;
-        Ok(match response {
-            Some(ethers_block) => Some(BlockData {
-                /// Could also use client_response for this, but its optional.
-                number: block,
-                time: ethers_block.timestamp.as_u64(),
-            }),
-            None => None,
-        })
-    }
-
-    async fn retry<'a, F, T>(&'a self, operation: F) -> Result<T>
-    where
-        F: Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<T>>>> + Send + 'static,
-        T: std::fmt::Debug,
-    {
-        const MAX_RETRIES: usize = 3;
+    // so this shouldn't only retry from one provider, but from multiple, esp. at the top of the chain
+    async fn retry_get(&self, max_retries: u32, wait_secs: u64) -> Result<T> {
         let mut retries = 0;
-
         loop {
-            match operation().await {
+            match self.try_get().await {
                 Ok(result) => return Ok(result),
                 Err(err) => {
                     retries += 1;
-                    if retries >= MAX_RETRIES {
+                    if retries >= max_retries {
                         return Err(err);
                     } else {
-                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        tokio::time::sleep(Duration::from_secs(wait_secs)).await;
                     }
                 }
             }
         }
     }
+}
 
-    pub async fn get_block_outer(&self, block: u64) -> Result<Option<BlockData>> {
-        self.retry(move || Box::pin(self.get_block(block))).await
-    }
+struct GetBlock {
+    provider: Arc<Provider<Http>>,
+    block: u64,
+}
 
-    pub async fn get_block(&self, block: u64) -> Result<Option<BlockData>> {
-        let response = self.provider.get_block(block).await?;
-        Ok(match response {
+#[async_trait::async_trait]
+impl RetryGet<Option<BlockData>> for GetBlock {
+    async fn try_get(&self) -> Result<Option<BlockData>> {
+        let res: Option<ethers::types::Block<ethers::types::H256>> =
+            self.provider.get_block(self.block).await?;
+
+        Ok(match res {
             Some(ethers_block) => Some(BlockData {
-                /// Could also use client_response for this, but its optional.
-                number: block,
+                // Could also use client_response for this, but its optional.
+                number: self.block,
                 time: ethers_block.timestamp.as_u64(),
             }),
             None => None,
         })
     }
+}
 
-    // TODO (Cost Optimization): on the number of `indices`.
-    //  Example: QuickNode API credits for
-    //  - eth_getBlockReceipts                    is 59 while
-    //  - eth_getTransactionByBlockNumberAndIndex is 2
-    //  So when indices.len() < 59/2 its cheaper to get them individually.
-    pub async fn get_block_receipts(
-        &self,
-        block: u64,
-        indices: HashSet<u64>,
-    ) -> Result<HashMap<u64, TxDetails>> {
+struct GetBlockReceipts {
+    provider: Arc<Provider<Http>>,
+    block: u64,
+    indices: HashSet<u64>,
+}
+
+#[async_trait::async_trait]
+impl RetryGet<HashMap<u64, TxDetails>> for GetBlockReceipts {
+    async fn try_get(&self) -> Result<HashMap<u64, TxDetails>> {
+        let block = self.block;
+
         // First try eth_getBlockReceipts
         // This method is only supported by a few node providers: Erigon (e.g. QuickNode, Alchemy, Ankr).
         // But not Infura for example
@@ -136,7 +124,7 @@ impl Client {
                 .into_iter()
                 .filter_map(|r| {
                     let index = r.transaction_index.0[0];
-                    if indices.contains(&index) {
+                    if self.indices.contains(&index) {
                         Some((r.transaction_index.0[0], r.into()))
                     } else {
                         // Otherwise, we aren't interested.
@@ -150,7 +138,7 @@ impl Client {
                 let mut result = HashMap::new();
                 let mut handles = vec![];
 
-                for index in indices {
+                for index in self.indices.iter().map(|i| *i) {
                     // TODO - Call eth_getBlockTransactionCountByNumber and don't request when index > that.
                     let eth_client_clone = self.provider.clone();
                     let handle = tokio::spawn(async move {
@@ -170,13 +158,76 @@ impl Client {
                             result.insert(index, receipt.into());
                         }
                         None => {
-                            tracing::warn!("transaction at block {block}, index {index} not found");
+                            tracing::warn!(
+                                "transaction at block {}, index {} not found",
+                                self.block,
+                                index
+                            );
                         }
                     }
                 }
                 Ok(result)
             }
         }
+    }
+}
+
+impl Client {
+    pub fn new(url: &str) -> Result<Self> {
+        Ok(Self {
+            provider: Arc::new(Provider::<Http>::try_from(url)?),
+        })
+    }
+
+    pub async fn retry_get_block(&self, block: u64) -> Result<Option<BlockData>> {
+        GetBlock {
+            provider: self.provider.clone(),
+            block,
+        }
+        .retry_get(3, 1)
+        .await
+    }
+
+    pub async fn get_block(&self, block: u64) -> Result<Option<BlockData>> {
+        GetBlock {
+            provider: self.provider.clone(),
+            block,
+        }
+        .try_get()
+        .await
+    }
+
+    // TODO (Cost Optimization): on the number of `indices`.
+    //  Example: QuickNode API credits for
+    //  - eth_getBlockReceipts                    is 59 while
+    //  - eth_getTransactionByBlockNumberAndIndex is 2
+    //  So when indices.len() < 59/2 its cheaper to get them individually.
+    pub async fn get_block_receipts(
+        &self,
+        block: u64,
+        indices: HashSet<u64>,
+    ) -> Result<HashMap<u64, TxDetails>> {
+        GetBlockReceipts {
+            provider: self.provider.clone(),
+            block,
+            indices,
+        }
+        .try_get()
+        .await
+    }
+
+    pub async fn retry_get_block_receipts(
+        &self,
+        block: u64,
+        indices: HashSet<u64>,
+    ) -> Result<HashMap<u64, TxDetails>> {
+        GetBlockReceipts {
+            provider: self.provider.clone(),
+            block,
+            indices,
+        }
+        .retry_get(3, 1)
+        .await
     }
 
     pub async fn get_erc721_uri(&self, token: &NftId) -> Result<String> {
