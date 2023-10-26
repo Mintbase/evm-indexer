@@ -9,6 +9,7 @@ use ethers::{
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
+    time::Duration,
 };
 
 abigen!(ERC721Metadata, "./src/abis/ERC721Metadata.json");
@@ -76,6 +77,33 @@ impl Client {
             }),
             None => None,
         })
+    }
+
+    async fn retry<'a, F, T>(&'a self, operation: F) -> Result<T>
+    where
+        F: Fn() -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<T>>>> + Send + 'static,
+        T: std::fmt::Debug,
+    {
+        const MAX_RETRIES: usize = 3;
+        let mut retries = 0;
+
+        loop {
+            match operation().await {
+                Ok(result) => return Ok(result),
+                Err(err) => {
+                    retries += 1;
+                    if retries >= MAX_RETRIES {
+                        return Err(err);
+                    } else {
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                    }
+                }
+            }
+        }
+    }
+
+    pub async fn get_block_outer(&self, block: u64) -> Result<Option<BlockData>> {
+        self.retry(move || Box::pin(self.get_block(block))).await
     }
 
     pub async fn get_block(&self, block: u64) -> Result<Option<BlockData>> {
