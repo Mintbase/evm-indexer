@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::{
     models::{Nft, NftId, Transaction},
     store::DataStore,
@@ -13,14 +11,45 @@ use event_retriever::db_reader::{
     diesel::{BlockRange, EventSource},
     models::*,
 };
+use std::collections::{HashMap, HashSet};
+
+#[derive(Default, Debug, PartialEq)]
+pub struct UpdateCache {
+    nfts: HashMap<NftId, Nft>,
+    transactions: Vec<Transaction>,
+}
+
+impl UpdateCache {
+    /// This method writes its records to the provided DataStore
+    /// while relieving itself of its memory.
+    pub fn write(&mut self, db: &mut DataStore) {
+        // TODO - It would be ideal if all db actions happened in a single commit
+        //  so that failure to write any one of them results in no changes at all.
+        //  this can be done with @databases typescript library so it should be possible here.
+
+        // Write and clear transactions
+        db.save_transactions(self.transactions.clone());
+        self.transactions = vec![];
+
+        // drain memory into database.
+        for (_, nft) in self.nfts.drain() {
+            // TODO - Batch these updates.
+            db.save_nft(&nft);
+        }
+    }
+}
+
+pub struct ChainData {
+    tx_data: HashMap<u64, TxDetails>,
+}
 
 pub struct EventHandler {
     /// Source of events for processing
     source: EventSource,
     /// Location of existing stored content
     store: DataStore,
-    /// This is a memory store of nft updates.
-    nft_updates: HashMap<NftId, Nft>,
+    /// A memory store updates.
+    updates: UpdateCache,
     /// Web3 Provider
     eth_client: EthClient,
 }
@@ -30,44 +59,48 @@ impl EventHandler {
         Ok(Self {
             source: EventSource::new(source_url).context("init EventSource")?,
             store: DataStore::new(store_url).context("init DataStore")?,
-            nft_updates: HashMap::new(),
+            updates: UpdateCache::default(),
             eth_client: EthClient::new(eth_rpc).context("init EthClient")?,
         })
     }
 
+    pub async fn load_chain_data(
+        &mut self,
+        block: u64,
+        indices: HashSet<u64>,
+    ) -> Result<ChainData> {
+        let tx_data = self.eth_client.get_block_receipts(block, indices).await?;
+        self.updates.transactions.extend(
+            tx_data
+                .clone()
+                .into_iter()
+                .map(|(idx, data)| Transaction::new(block, idx, data))
+                .collect::<Vec<_>>(),
+        );
+        Ok(ChainData { tx_data })
+    }
+
     pub async fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
         let event_map = self.source.get_events_for_block_range(range)?;
-        let mut transaction_updates = Vec::new();
         for (block, block_events) in event_map.into_iter() {
-            let tx_data = self
-                .eth_client
-                .get_block_receipts(block, block_events.keys().cloned().map(|k| k.0).collect())
+            let ChainData { tx_data } = self
+                .load_chain_data(block, block_events.keys().cloned().map(|k| k.0).collect())
                 .await?;
-            transaction_updates.extend(
-                tx_data
-                    .clone()
-                    .into_iter()
-                    .map(|(idx, data)| Transaction::new(block, idx, data))
-                    .collect::<Vec<_>>(),
-            );
             for ((tidx, _lidx), tx_events) in block_events {
                 let tx = tx_data.get(&tidx).expect("receipt known to exist!");
                 for NftEvent { base, meta } in tx_events.into_iter() {
                     match meta {
                         EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a, tx),
                         EventMeta::Erc721Transfer(t) => self.handle_erc721_transfer(base, t, tx),
-                        _ => unimplemented!("unhandled event!"),
+                        _ => {
+                            tracing::error!("unhandled event!");
+                            continue;
+                        }
                     };
                 }
             }
         }
-
-        self.store.save_transactions(transaction_updates);
-        // drain memory into database.
-        for (_, nft) in self.nft_updates.drain() {
-            // TODO - Batch these updates.
-            self.store.save_nft(&nft);
-        }
+        self.updates.write(&mut self.store);
         Ok(())
     }
     fn handle_erc721_approval(
@@ -81,7 +114,7 @@ impl EventHandler {
             address: base.contract_address,
             token_id: approval.id,
         };
-        let mut nft = match self.nft_updates.remove(&nft_id) {
+        let mut nft = match self.updates.nfts.remove(&nft_id) {
             Some(nft) => nft,
             None => match self.store.load_nft(&nft_id) {
                 Some(nft) => nft,
@@ -96,7 +129,7 @@ impl EventHandler {
         } else {
             Some(approval.approved.into())
         };
-        self.nft_updates.insert(nft_id, nft);
+        self.updates.nfts.insert(nft_id, nft);
     }
 
     fn handle_erc721_transfer(
@@ -111,7 +144,7 @@ impl EventHandler {
             token_id: transfer.token_id,
         };
 
-        let mut nft = match self.nft_updates.remove(&nft_id) {
+        let mut nft = match self.updates.nfts.remove(&nft_id) {
             Some(nft) => nft,
             None => self.store.load_or_initialize_nft(&base, &nft_id, tx),
         };
@@ -137,7 +170,7 @@ impl EventHandler {
         // TODO - fetch and set json. Maybe in load_or_initialize
         // Approvals are unset on transfer.
         nft.approved = None;
-        self.nft_updates.insert(nft_id, nft);
+        self.updates.nfts.insert(nft_id, nft);
     }
 }
 
@@ -160,7 +193,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
     async fn event_processing() {
         let mut handler = EventHandler::new(TEST_SOURCE_URL, TEST_STORE_URL, TEST_ETH_RPC).unwrap();
         let block = 15_000_000;
@@ -205,7 +237,7 @@ mod tests {
         };
         // Approval before token existance (handled the way the event said)
         handler.handle_erc721_approval(base, approval, &tx);
-        let nft = handler.nft_updates.get(&token).unwrap();
+        let nft = handler.updates.nfts.get(&token).unwrap();
         assert_eq!(
             Address::expect_from(nft.clone().approved.unwrap()),
             approved
@@ -219,7 +251,7 @@ mod tests {
             },
             &tx,
         );
-        let nft = handler.nft_updates.get(&token).unwrap();
+        let nft = handler.updates.nfts.get(&token).unwrap();
         assert_eq!(nft.approved, None);
     }
 
@@ -253,7 +285,7 @@ mod tests {
         handler.handle_erc721_transfer(base, transfer, &tx);
 
         assert_eq!(
-            handler.nft_updates.get(&token).unwrap(),
+            handler.updates.nfts.get(&token).unwrap(),
             &Nft {
                 contract_address: contract_address.into(),
                 token_id: token_id.into(),
@@ -288,7 +320,7 @@ mod tests {
         );
 
         assert_eq!(
-            handler.nft_updates.get(&token).unwrap(),
+            handler.updates.nfts.get(&token).unwrap(),
             &Nft {
                 contract_address: contract_address.into(),
                 token_id: token_id.into(),
@@ -323,7 +355,7 @@ mod tests {
             &tx,
         );
         assert_eq!(
-            handler.nft_updates.get(&token).unwrap(),
+            handler.updates.nfts.get(&token).unwrap(),
             &Nft {
                 contract_address: contract_address.into(),
                 token_id: token_id.into(),

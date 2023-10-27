@@ -117,7 +117,7 @@ impl TokenContract {
     }
 }
 
-#[derive(Queryable, Selectable, Insertable, AsChangeset, Clone)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset, Clone, Debug, PartialEq)]
 #[diesel(table_name = transactions)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Transaction {
