@@ -62,3 +62,9 @@ CREATE TABLE approval_for_all
     -- this was semi-arbitrarily chosen, but makes some sense
     primary key (contract_address, owner)
 );
+
+CREATE TABLE blocks
+(
+    number int8      primary key,
+    time   timestamp not null
+);

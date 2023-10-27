@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use eth::{
-    rpc::{Client as EthClient, TxDetails},
+    rpc::{BlockData, Client as EthClient, TxDetails},
     types::{Address, NftId},
 };
 use event_retriever::db_reader::{
@@ -17,6 +17,7 @@ use std::collections::{HashMap, HashSet};
 pub struct UpdateCache {
     nfts: HashMap<NftId, Nft>,
     transactions: Vec<Transaction>,
+    blocks: Vec<BlockData>,
 }
 
 impl UpdateCache {
@@ -28,8 +29,10 @@ impl UpdateCache {
         //  this can be done with @databases typescript library so it should be possible here.
 
         // Write and clear transactions
-        db.save_transactions(self.transactions.clone());
-        self.transactions = vec![];
+        db.save_transactions(std::mem::take(&mut self.transactions));
+
+        // Write and clear blocks
+        db.save_blocks(std::mem::take(&mut self.blocks));
 
         // drain memory into database.
         for (_, nft) in self.nfts.drain() {
@@ -74,9 +77,15 @@ impl EventHandler {
             tx_data
                 .clone()
                 .into_iter()
-                .map(|(idx, data)| Transaction::new(block, idx, data))
-                .collect::<Vec<_>>(),
+                .map(|(idx, data)| Transaction::new(block, idx, data)),
         );
+        // TODO - fetch all at once with: https://github.com/Mintbase/evm-indexer/issues/57
+        let block_info = self
+            .eth_client
+            .get_block(block)
+            .await?
+            .expect("block exists");
+        self.updates.blocks.push(block_info);
         Ok(ChainData { tx_data })
     }
 
@@ -195,6 +204,7 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
+    use dotenv::dotenv;
     use eth::types::{Address, Bytes32, NftId, U256};
     use event_retriever::db_reader::diesel::BlockRange;
     static TEST_SOURCE_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";
@@ -209,7 +219,13 @@ mod tests {
 
     #[tokio::test]
     async fn event_processing() {
-        let mut handler = EventHandler::new(TEST_SOURCE_URL, TEST_STORE_URL, TEST_ETH_RPC).unwrap();
+        dotenv().ok();
+        let mut handler = EventHandler::new(
+            TEST_SOURCE_URL,
+            TEST_STORE_URL,
+            &std::env::var("NODE_URL").unwrap_or(TEST_ETH_RPC.to_string()),
+        )
+        .unwrap();
         let block = 15_000_000;
         assert!(handler
             .process_events_for_block_range(BlockRange {

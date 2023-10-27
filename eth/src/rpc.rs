@@ -1,5 +1,6 @@
 use crate::types::{Address, Bytes32, NftId};
 use anyhow::{anyhow, Result};
+use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
 use ethers::{
     middleware::Middleware,
     prelude::abigen,
@@ -39,6 +40,21 @@ impl From<ethers::types::Transaction> for TxDetails {
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub struct BlockData {
+    /// Block Number
+    pub number: u64,
+    /// Unix timestamp as 64-bit integer
+    pub time: u64,
+}
+
+impl BlockData {
+    pub fn db_time(&self) -> NaiveDateTime {
+        NaiveDateTime::from_timestamp_opt(self.time.try_into().expect("no crazy times"), 0)
+            .expect("No crazy times plz")
+    }
+}
+
 pub struct Client {
     provider: Arc<Provider<Http>>,
 }
@@ -50,18 +66,23 @@ impl Client {
         })
     }
 
+    pub async fn get_block(&self, block: u64) -> Result<Option<BlockData>> {
+        let response = self.provider.get_block(block).await?;
+        Ok(match response {
+            Some(ethers_block) => Some(BlockData {
+                /// Could also use client_response for this, but its optional.
+                number: block,
+                time: ethers_block.timestamp.as_u64(),
+            }),
+            None => None,
+        })
+    }
+
     // TODO (Cost Optimization): on the number of `indices`.
     //  Example: QuickNode API credits for
     //  - eth_getBlockReceipts                    is 59 while
     //  - eth_getTransactionByBlockNumberAndIndex is 2
     //  So when indices.len() < 59/2 its cheaper to get them individually.
-
-    // TODO - make a blocks table for timestamps.
-    //  let block_time = eth_client
-    //      .get_block(block)
-    //      .await?
-    //      .expect("block {block} not found")
-    //      .timestamp;
     pub async fn get_block_receipts(
         &self,
         block: u64,
@@ -174,6 +195,46 @@ mod tests {
                 .unwrap(),
             HashMap::new()
         );
+    }
+
+    #[tokio::test]
+    async fn get_block() {
+        let eth_client = test_client();
+
+        // Some
+        let number = 10_000_000;
+        let block = eth_client.get_block(number).await.unwrap();
+        assert_eq!(
+            block,
+            Some(BlockData {
+                number,
+                time: 1588598533
+            })
+        );
+        // Check that: https://etherscan.io/block/10000000
+        assert_eq!(
+            block.unwrap().db_time(),
+            NaiveDateTime::from_str("2020-05-04T13:22:13").unwrap()
+        );
+
+        // None
+        assert!(eth_client
+            .get_block(i64::MAX as u64)
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn impl_block() {
+        let block = BlockData {
+            number: 10_000_000,
+            time: 1588598533,
+        };
+        assert_eq!(
+            block.db_time(),
+            NaiveDateTime::from_str("2020-05-04T13:22:13").unwrap()
+        )
     }
 
     #[tokio::test]
