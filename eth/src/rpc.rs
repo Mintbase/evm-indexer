@@ -40,7 +40,7 @@ impl From<ethers::types::Transaction> for TxDetails {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub struct BlockData {
     /// Block Number
     pub number: u64,
