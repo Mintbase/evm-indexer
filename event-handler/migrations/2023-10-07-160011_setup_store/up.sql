@@ -34,22 +34,24 @@ CREATE TABLE contract_abis
 
 CREATE TABLE nfts
 (
-    contract_address    bytea          not null,
-    token_id            numeric(78, 0) not null,
-    token_uri           text,
-    owner               bytea          not null,
-    last_transfer_block int8,
-    last_transfer_tx    int8,
+    contract_address      bytea          not null,
+    token_id              numeric(78, 0) not null,
+    token_uri             text,
+    owner                 bytea          not null,
+    last_update_block     int8           not null,
+    last_update_log_index int8           not null,
+    last_transfer_block   int8,
+    last_transfer_tx      int8,
     -- Mint/Burn Info
-    mint_block          int8           not null,
-    mint_tx             int8           not null,
-    burn_block          int8,
-    burn_tx             int8,
-    minter              bytea          not null, -- tx.from for transfer from 0
-    approved            bytea,
+    mint_block            int8           not null,
+    mint_tx               int8           not null,
+    burn_block            int8,
+    burn_tx               int8,
+    minter                bytea          not null,
+    approved              bytea,
     -- Metadata:
     -- TODO - this will likely be moved into its own table.
-    json                jsonb,
+    json                  jsonb,
     primary key (contract_address, token_id)
 );
 
