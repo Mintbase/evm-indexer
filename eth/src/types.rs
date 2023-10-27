@@ -263,7 +263,7 @@ impl NftId {
         self.address.into()
     }
 
-    pub fn db_id(&self) -> BigDecimal {
+    pub fn db_token_id(&self) -> BigDecimal {
         self.token_id.into()
     }
 }

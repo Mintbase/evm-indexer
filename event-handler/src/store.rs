@@ -105,7 +105,7 @@ impl DataStore {
     pub fn load_nft(&mut self, token: &NftId) -> Option<Nft> {
         let result = nfts::dsl::nfts
             .filter(nfts::contract_address.eq(&token.db_address()))
-            .filter(nfts::token_id.eq(&token.db_id()))
+            .filter(nfts::token_id.eq(&token.db_token_id()))
             .first(&mut self.client)
             .optional();
         handle_query_result(result)
