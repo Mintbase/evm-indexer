@@ -251,3 +251,19 @@ impl From<Bytes32> for H256 {
         value.0
     }
 }
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct NftId {
+    pub address: Address,
+    pub token_id: U256,
+}
+
+impl NftId {
+    pub fn db_address(&self) -> Vec<u8> {
+        self.address.into()
+    }
+
+    pub fn db_token_id(&self) -> BigDecimal {
+        self.token_id.into()
+    }
+}

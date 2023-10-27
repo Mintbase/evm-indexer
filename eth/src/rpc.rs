@@ -1,10 +1,16 @@
-use crate::types::{Address, Bytes32};
-use anyhow::Result;
+use crate::types::{Address, Bytes32, NftId};
+use anyhow::{anyhow, Result};
 use ethers::{
     middleware::Middleware,
+    prelude::abigen,
     providers::{Http, Provider},
 };
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
+
+abigen!(ERC721Metadata, "./src/abis/ERC721Metadata.json");
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct TxDetails {
@@ -34,13 +40,13 @@ impl From<ethers::types::Transaction> for TxDetails {
 }
 
 pub struct Client {
-    provider: Provider<Http>,
+    provider: Arc<Provider<Http>>,
 }
 
 impl Client {
     pub fn new(url: &str) -> Result<Self> {
         Ok(Self {
-            provider: Provider::<Http>::try_from(url)?,
+            provider: Arc::new(Provider::<Http>::try_from(url)?),
         })
     }
 
@@ -110,6 +116,17 @@ impl Client {
                 Ok(result)
             }
         }
+    }
+
+    pub async fn get_erc721_uri(&self, token: &NftId) -> Result<String> {
+        let contract = ERC721Metadata::new(token.address, self.provider.clone());
+        contract
+            .token_uri(token.token_id.0)
+            .call()
+            .await
+            // Remove Null Bytes: Postgres can't handle them.
+            .map(|uri| uri.replace('\0', ""))
+            .map_err(|err| anyhow!(err.to_string()))
     }
 }
 

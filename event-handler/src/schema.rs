@@ -35,6 +35,7 @@ diesel::table! {
     nfts (contract_address, token_id) {
         contract_address -> Bytea,
         token_id -> Numeric,
+        token_uri -> Nullable<Text>,
         owner -> Bytea,
         last_transfer_block -> Nullable<Int8>,
         last_transfer_tx -> Nullable<Int8>,
@@ -60,7 +61,6 @@ diesel::table! {
         name -> Nullable<Text>,
         symbol -> Nullable<Text>,
         decimals -> Nullable<Int2>,
-        token_uri -> Nullable<Text>,
         created_block -> Int8,
         created_tx_index -> Int8,
         // content_flags -> Nullable<Array<Nullable<ContentFlag>>>,

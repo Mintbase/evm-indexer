@@ -19,7 +19,6 @@ CREATE TABLE token_contracts
     name             text,
     symbol           text,
     decimals         int2, -- Null for Nfts
-    token_uri        text, -- Null for erc20
     -- This uniquely defines creation tx
     created_block    int8       not null,
     created_tx_index int8       not null
@@ -37,6 +36,7 @@ CREATE TABLE nfts
 (
     contract_address    bytea          not null,
     token_id            numeric(78, 0) not null,
+    token_uri           text,
     owner               bytea          not null,
     last_transfer_block int8,
     last_transfer_tx    int8,

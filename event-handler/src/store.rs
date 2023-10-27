@@ -4,7 +4,10 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection, RunQueryDsl};
-use eth::{rpc::TxDetails, types::Address};
+use eth::{
+    rpc::TxDetails,
+    types::{Address, NftId},
+};
 use event_retriever::db_reader::models::EventBase;
 
 pub struct DataStore {
@@ -102,7 +105,7 @@ impl DataStore {
     pub fn load_nft(&mut self, token: &NftId) -> Option<Nft> {
         let result = nfts::dsl::nfts
             .filter(nfts::contract_address.eq(&token.db_address()))
-            .filter(nfts::token_id.eq(&token.db_id()))
+            .filter(nfts::token_id.eq(&token.db_token_id()))
             .first(&mut self.client)
             .optional();
         handle_query_result(result)
@@ -122,7 +125,6 @@ impl DataStore {
         nft_id: &NftId,
         tx: &TxDetails,
     ) -> Nft {
-        // TODO - get Uri
         match self.load_nft(nft_id) {
             Some(nft) => nft,
             None => {

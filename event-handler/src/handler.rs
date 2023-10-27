@@ -1,11 +1,11 @@
 use crate::{
-    models::{Nft, NftId, Transaction},
+    models::{Nft, Transaction},
     store::DataStore,
 };
 use anyhow::{Context, Result};
 use eth::{
     rpc::{Client as EthClient, TxDetails},
-    types::Address,
+    types::{Address, NftId},
 };
 use event_retriever::db_reader::{
     diesel::{BlockRange, EventSource},
@@ -91,7 +91,9 @@ impl EventHandler {
                 for NftEvent { base, meta } in tx_events.into_iter() {
                     match meta {
                         EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a, tx),
-                        EventMeta::Erc721Transfer(t) => self.handle_erc721_transfer(base, t, tx),
+                        EventMeta::Erc721Transfer(t) => {
+                            self.handle_erc721_transfer(base, t, tx).await
+                        }
                         _ => {
                             tracing::error!("unhandled event!");
                             continue;
@@ -132,7 +134,7 @@ impl EventHandler {
         self.updates.nfts.insert(nft_id, nft);
     }
 
-    fn handle_erc721_transfer(
+    async fn handle_erc721_transfer(
         &mut self,
         base: EventBase,
         transfer: Erc721Transfer,
@@ -164,6 +166,20 @@ impl EventHandler {
         if transfer.from == Address::zero() {
             // Mint: This case is already handled by load_or_initialize
         }
+        if nft.token_uri.is_none() {
+            // Technically we could handle this in Mint block, except the retries.
+            nft.token_uri = match self.eth_client.get_erc721_uri(&nft_id).await {
+                Ok(uri) => Some(uri),
+                Err(err) => {
+                    tracing::warn!(
+                        "failed to retrieve uri for {:?} with {:?}. try again on next event",
+                        nft_id,
+                        err
+                    );
+                    None
+                }
+            }
+        }
         nft.owner = transfer.to.0.as_bytes().to_vec();
         nft.last_transfer_block = Some(block);
         nft.last_transfer_tx = Some(tx_index);
@@ -179,8 +195,7 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
-    use crate::models::NftId;
-    use eth::types::{Address, Bytes32, U256};
+    use eth::types::{Address, Bytes32, NftId, U256};
     use event_retriever::db_reader::diesel::BlockRange;
     static TEST_SOURCE_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";
     static TEST_STORE_URL: &str = "postgresql://postgres:postgres@localhost:5432/store";
@@ -199,7 +214,7 @@ mod tests {
         assert!(handler
             .process_events_for_block_range(BlockRange {
                 start: block,
-                end: block + 70,
+                end: block + 5,
             })
             .await
             .is_ok())
@@ -255,8 +270,8 @@ mod tests {
         assert_eq!(nft.approved, None);
     }
 
-    #[test]
-    fn erc721_transfer_handler() {
+    #[tokio::test]
+    async fn erc721_transfer_handler() {
         let mut handler = test_handler();
         let contract_address = Address::from(1);
         let token_id = U256::from(123);
@@ -282,13 +297,14 @@ mod tests {
             from: tx_from,
             to: Some(Address::from_str("0xdf190dc7190dfba737d7777a163445b7fff16133").unwrap()),
         };
-        handler.handle_erc721_transfer(base, transfer, &tx);
+        handler.handle_erc721_transfer(base, transfer, &tx).await;
 
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap(),
             &Nft {
                 contract_address: contract_address.into(),
                 token_id: token_id.into(),
+                token_uri: None,
                 owner: to.into(),
                 last_transfer_block: Some(base.block_number as i64),
                 last_transfer_tx: Some(base.transaction_index as i64),
@@ -309,21 +325,24 @@ mod tests {
             contract_address,
         };
         // Transfer back
-        handler.handle_erc721_transfer(
-            base_2,
-            Erc721Transfer {
-                from: to,
-                to: from,
-                token_id,
-            },
-            &tx,
-        );
+        handler
+            .handle_erc721_transfer(
+                base_2,
+                Erc721Transfer {
+                    from: to,
+                    to: from,
+                    token_id,
+                },
+                &tx,
+            )
+            .await;
 
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap(),
             &Nft {
                 contract_address: contract_address.into(),
                 token_id: token_id.into(),
+                token_uri: None,
                 owner: from.into(),
                 last_transfer_block: Some(base_2.block_number as i64),
                 last_transfer_tx: Some(base_2.transaction_index as i64),
@@ -345,20 +364,23 @@ mod tests {
             transaction_index: 9,
             contract_address,
         };
-        handler.handle_erc721_transfer(
-            base_3,
-            Erc721Transfer {
-                from,
-                to: Address::zero(),
-                token_id,
-            },
-            &tx,
-        );
+        handler
+            .handle_erc721_transfer(
+                base_3,
+                Erc721Transfer {
+                    from,
+                    to: Address::zero(),
+                    token_id,
+                },
+                &tx,
+            )
+            .await;
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap(),
             &Nft {
                 contract_address: contract_address.into(),
                 token_id: token_id.into(),
+                token_uri: None,
                 owner: [0u8; 20].to_vec(),
                 last_transfer_block: Some(base_3.block_number as i64),
                 last_transfer_tx: Some(base_3.transaction_index as i64),
