@@ -29,12 +29,10 @@ impl UpdateCache {
         //  this can be done with @databases typescript library so it should be possible here.
 
         // Write and clear transactions
-        db.save_transactions(self.transactions.clone());
-        self.transactions = vec![];
+        db.save_transactions(std::mem::take(&mut self.transactions));
 
         // Write and clear blocks
-        db.save_blocks(self.blocks.clone());
-        self.blocks = vec![];
+        db.save_blocks(std::mem::take(&mut self.blocks));
 
         // drain memory into database.
         for (_, nft) in self.nfts.drain() {
@@ -79,8 +77,7 @@ impl EventHandler {
             tx_data
                 .clone()
                 .into_iter()
-                .map(|(idx, data)| Transaction::new(block, idx, data))
-                .collect::<Vec<_>>(),
+                .map(|(idx, data)| Transaction::new(block, idx, data)),
         );
         // TODO - fetch all at once with: https://github.com/Mintbase/evm-indexer/issues/57
         let block_info = self
