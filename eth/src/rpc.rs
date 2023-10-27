@@ -125,7 +125,6 @@ impl RetryGet<HashMap<u64, TxDetails>> for GetBlockReceipts {
     //  So when indices.len() < 59/2 its cheaper to get them individually.
     async fn try_get(&self) -> Result<HashMap<u64, TxDetails>> {
         let block = self.block;
-
         // First try eth_getBlockReceipts
         // This method is only supported by a few node providers: Erigon (e.g. QuickNode, Alchemy, Ankr).
         // But not Infura for example
