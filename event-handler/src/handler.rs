@@ -95,7 +95,7 @@ impl EventHandler {
         Ok(ChainData { tx_data })
     }
 
-    pub async fn check_contract(&mut self, event: &EventBase) {
+    pub async fn check_for_contract(&mut self, event: &EventBase) {
         let address = event.contract_address;
         if self.updates.contracts.contains_key(&address)
             || self.store.load_contract(address).is_some()
@@ -119,7 +119,7 @@ impl EventHandler {
             for ((tidx, _lidx), tx_events) in block_events {
                 let tx = tx_data.get(&tidx).expect("receipt known to exist!");
                 for NftEvent { base, meta } in tx_events.into_iter() {
-                    self.check_contract(&base).await;
+                    self.check_for_contract(&base).await;
                     match meta {
                         EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a, tx),
                         EventMeta::Erc721Transfer(t) => {
