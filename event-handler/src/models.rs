@@ -35,6 +35,8 @@ pub struct Nft {
     pub token_id: BigDecimal,
     pub token_uri: Option<String>,
     pub owner: Vec<u8>,
+    pub last_update_block: i64,
+    pub last_update_log_index: i64,
     pub last_transfer_block: Option<i64>,
     pub last_transfer_tx: Option<i64>,
     pub mint_block: i64,
@@ -54,6 +56,8 @@ impl Nft {
             token_id: nft_id.token_id.into(),
             token_uri: None,
             owner: vec![],
+            last_update_block: 0,
+            last_update_log_index: 0,
             last_transfer_block: None,
             last_transfer_tx: None,
             // Maybe its best if we set this when transfer comes from Zero.
@@ -68,6 +72,11 @@ impl Nft {
             approved: None,
             json: None,
         }
+    }
+
+    pub fn event_applied(&self, base: &EventBase) -> bool {
+        (base.block_number as i64, base.log_index as i64)
+            <= (self.last_update_block, self.last_update_log_index)
     }
 }
 
@@ -188,14 +197,16 @@ mod tests {
             from,
             to: Some(Address::from(2)),
         };
-
+        let nft = Nft::build_from(&base, &nft_id, &tx);
         assert_eq!(
-            Nft::build_from(&base, &nft_id, &tx),
+            nft,
             Nft {
                 contract_address: nft_id.address.into(),
                 token_id: nft_id.token_id.into(),
                 token_uri: None,
                 owner: vec![],
+                last_update_block: 0,
+                last_update_log_index: 0,
                 last_transfer_block: None,
                 last_transfer_tx: None,
                 // Maybe its best if we set this when transfer comes from Zero.
@@ -207,6 +218,27 @@ mod tests {
                 approved: None,
                 json: None,
             }
-        )
+        );
+
+        assert!(nft.event_applied(&EventBase {
+            block_number: 0,
+            log_index: 0,
+            transaction_index: 0,
+            contract_address
+        }));
+
+        assert!(!nft.event_applied(&EventBase {
+            block_number: 1,
+            log_index: 0,
+            transaction_index: 0,
+            contract_address
+        }));
+
+        assert!(!nft.event_applied(&EventBase {
+            block_number: 0,
+            log_index: 1,
+            transaction_index: 0,
+            contract_address
+        }));
     }
 }

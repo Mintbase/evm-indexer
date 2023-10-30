@@ -37,6 +37,8 @@ diesel::table! {
         token_id -> Numeric,
         token_uri -> Nullable<Text>,
         owner -> Bytea,
+        last_update_block -> Int8,
+        last_update_log_index -> Int8,
         last_transfer_block -> Nullable<Int8>,
         last_transfer_tx -> Nullable<Int8>,
         mint_block -> Int8,
