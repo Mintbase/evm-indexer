@@ -105,7 +105,7 @@ pub struct Erc721Approval {
     pub id: U256,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Erc721Transfer {
     pub from: Address,
     pub to: Address,

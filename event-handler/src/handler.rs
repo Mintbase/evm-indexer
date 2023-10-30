@@ -135,11 +135,24 @@ impl EventHandler {
                 }
             },
         };
+        if nft.event_applied(&base) {
+            tracing::warn!(
+                "skippping attempt to replay event {:?} at tx {:?} on {:?}",
+                base,
+                tx.hash,
+                nft_id
+            );
+            // Put the nft back in cache!
+            self.updates.nfts.insert(nft_id, nft);
+            return;
+        }
         nft.approved = if approval.approved == Address::zero() {
             None
         } else {
             Some(approval.approved.into())
         };
+        nft.last_update_block = base.block_number as i64;
+        nft.last_update_log_index = base.log_index as i64;
         self.updates.nfts.insert(nft_id, nft);
     }
 
@@ -159,13 +172,27 @@ impl EventHandler {
             Some(nft) => nft,
             None => self.store.load_or_initialize_nft(&base, &nft_id, tx),
         };
+        if nft.event_applied(&base) {
+            tracing::warn!(
+                "skippping attempt to replay event {:?} at tx {:?} on {:?}",
+                base,
+                tx.hash,
+                nft_id
+            );
+            // Put the nft back in cache!
+            self.updates.nfts.insert(nft_id, nft);
+            return;
+        }
         let EventBase {
             block_number,
             transaction_index,
+            log_index,
             ..
         } = base;
+        // TODO - Maybe we should just leave Event Base fields as i64...
         let block = block_number.try_into().expect("i64 block");
-        let tx_index = transaction_index.try_into().expect("i64 block");
+        let tx_index = transaction_index.try_into().expect("i64 tx_index");
+        let log_index = log_index.try_into().expect("i64 log index");
 
         if transfer.to == Address::zero() {
             // burn token
@@ -190,6 +217,8 @@ impl EventHandler {
             }
         }
         nft.owner = transfer.to.0.as_bytes().to_vec();
+        nft.last_update_block = block;
+        nft.last_update_log_index = log_index;
         nft.last_transfer_block = Some(block);
         nft.last_transfer_tx = Some(tx_index);
         // TODO - fetch and set json. Maybe in load_or_initialize
@@ -237,9 +266,17 @@ mod tests {
         // TODO - construct a sequence of events and actually check the Store State is as expected here.
     }
 
-    #[test]
-    fn erc721_approval_handler() {
-        let mut handler = test_handler();
+    struct SetupData {
+        handler: EventHandler,
+        // contract_address: Address,
+        token_id: U256,
+        token: NftId,
+        base: EventBase,
+        tx: TxDetails,
+    }
+
+    fn setup_data() -> SetupData {
+        let handler = test_handler();
         let contract_address = Address::from(1);
         let token_id = U256::from(123);
         let token = NftId {
@@ -252,12 +289,6 @@ mod tests {
             transaction_index: 3,
             contract_address,
         };
-        let approved = Address::from(3);
-        let approval = Erc721Approval {
-            owner: Address::from(2),
-            approved,
-            id: token.token_id,
-        };
         let tx = TxDetails {
             hash: Bytes32::from_str(
                 "0xe9e91f1ee4b56c0df2e9f06c2b8c27c6076195a88a7b8537ba8313d80e6f124e",
@@ -266,13 +297,40 @@ mod tests {
             from: Address::from_str("0x32be343b94f860124dc4fee278fdcbd38c102d88").unwrap(),
             to: Some(Address::from_str("0xdf190dc7190dfba737d7777a163445b7fff16133").unwrap()),
         };
+        SetupData {
+            handler,
+            token_id,
+            token,
+            base,
+            tx,
+        }
+    }
+
+    #[test]
+    fn erc721_approval_handler() {
+        let SetupData {
+            mut handler,
+            token_id: _,
+            token,
+            mut base,
+            tx,
+        } = setup_data();
+
+        let approved = Address::from(3);
+        let first_approval = Erc721Approval {
+            owner: Address::from(2),
+            approved,
+            id: token.token_id,
+        };
         // Approval before token existance (handled the way the event said)
-        handler.handle_erc721_approval(base, approval, &tx);
+        handler.handle_erc721_approval(base, first_approval, &tx);
         let nft = handler.updates.nfts.get(&token).unwrap();
         assert_eq!(
             Address::expect_from(nft.clone().approved.unwrap()),
-            approved
+            approved,
+            "first approval"
         );
+        base.block_number += 1; // resuse incremented base.
         handler.handle_erc721_approval(
             base,
             Erc721Approval {
@@ -283,52 +341,51 @@ mod tests {
             &tx,
         );
         let nft = handler.updates.nfts.get(&token).unwrap();
-        assert_eq!(nft.approved, None);
+        assert_eq!(nft.approved, None, "second approval");
+
+        // Idempotency: Try to replay the first approval
+        base.block_number -= 1;
+        handler.handle_erc721_approval(base, first_approval, &tx);
+        // Approval not applied.
+        assert_eq!(
+            handler.updates.nfts.get(&token).unwrap().approved,
+            None,
+            "idempotency"
+        );
     }
 
     #[tokio::test]
     async fn erc721_transfer_handler() {
-        let mut handler = test_handler();
-        let contract_address = Address::from(1);
-        let token_id = U256::from(123);
-        let token = NftId {
-            address: contract_address,
+        let SetupData {
+            mut handler,
             token_id,
-        };
-        let base = EventBase {
-            block_number: 1,
-            log_index: 2,
-            transaction_index: 3,
-            contract_address,
-        };
+            token,
+            base,
+            tx,
+        } = setup_data();
         let from = Address::from(2);
         let to = Address::from(3);
-        let tx_from = Address::from(4);
-        let transfer = Erc721Transfer { from, to, token_id };
-        let tx = TxDetails {
-            hash: Bytes32::from_str(
-                "0xe9e91f1ee4b56c0df2e9f06c2b8c27c6076195a88a7b8537ba8313d80e6f124e",
-            )
-            .unwrap(),
-            from: tx_from,
-            to: Some(Address::from_str("0xdf190dc7190dfba737d7777a163445b7fff16133").unwrap()),
-        };
-        handler.handle_erc721_transfer(base, transfer, &tx).await;
+        let first_transfer = Erc721Transfer { from, to, token_id };
+        handler
+            .handle_erc721_transfer(base, first_transfer.clone(), &tx)
+            .await;
 
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap(),
             &Nft {
-                contract_address: contract_address.into(),
+                contract_address: base.contract_address.into(),
                 token_id: token_id.into(),
                 token_uri: None,
                 owner: to.into(),
+                last_update_block: 1,
+                last_update_log_index: 2,
                 last_transfer_block: Some(base.block_number as i64),
                 last_transfer_tx: Some(base.transaction_index as i64),
                 mint_block: base.block_number as i64,
                 mint_tx: base.transaction_index as i64,
                 burn_block: None,
                 burn_tx: None,
-                minter: tx_from.into(),
+                minter: tx.from.into(),
                 approved: None,
                 json: None
             },
@@ -338,7 +395,7 @@ mod tests {
             block_number: 4,
             log_index: 5,
             transaction_index: 6,
-            contract_address,
+            contract_address: base.contract_address,
         };
         // Transfer back
         handler
@@ -356,17 +413,19 @@ mod tests {
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap(),
             &Nft {
-                contract_address: contract_address.into(),
+                contract_address: base.contract_address.into(),
                 token_id: token_id.into(),
                 token_uri: None,
                 owner: from.into(),
+                last_update_block: 4,
+                last_update_log_index: 5,
                 last_transfer_block: Some(base_2.block_number as i64),
                 last_transfer_tx: Some(base_2.transaction_index as i64),
                 mint_block: base.block_number as i64,
                 mint_tx: base.transaction_index as i64,
                 burn_block: None,
                 burn_tx: None,
-                minter: tx_from.into(),
+                minter: tx.from.into(),
                 approved: None,
                 json: None
             },
@@ -378,7 +437,7 @@ mod tests {
             block_number: 7,
             log_index: 8,
             transaction_index: 9,
-            contract_address,
+            contract_address: base.contract_address,
         };
         handler
             .handle_erc721_transfer(
@@ -394,21 +453,33 @@ mod tests {
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap(),
             &Nft {
-                contract_address: contract_address.into(),
+                contract_address: base.contract_address.into(),
                 token_id: token_id.into(),
                 token_uri: None,
                 owner: [0u8; 20].to_vec(),
+                last_update_block: 7,
+                last_update_log_index: 8,
                 last_transfer_block: Some(base_3.block_number as i64),
                 last_transfer_tx: Some(base_3.transaction_index as i64),
                 mint_block: base.block_number as i64,
                 mint_tx: base.transaction_index as i64,
                 burn_block: Some(base_3.block_number as i64),
                 burn_tx: Some(base_3.transaction_index as i64),
-                minter: tx_from.into(),
+                minter: tx.from.into(),
                 approved: None,
                 json: None
             },
             "burn transfer"
         );
+
+        // Idempotency: try to replay earlier transfers
+        handler
+            .handle_erc721_transfer(base, first_transfer, &tx)
+            .await;
+        assert_eq!(
+            handler.updates.nfts.get(&token).unwrap().owner,
+            [0u8; 20].to_vec(),
+            "idempotency"
+        )
     }
 }
