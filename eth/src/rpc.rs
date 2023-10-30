@@ -181,6 +181,25 @@ impl RetryGet<HashMap<u64, TxDetails>> for GetBlockReceipts {
     }
 }
 
+struct GetErc721Uri {
+    provider: Arc<Provider<Http>>,
+    token: NftId,
+}
+
+#[async_trait::async_trait]
+impl RetryGet<String> for GetErc721Uri {
+    async fn try_get(&self) -> Result<String> {
+        let contract = ERC721Metadata::new(self.token.address, self.provider.clone());
+        contract
+            .token_uri(self.token.token_id.0)
+            .call()
+            .await
+            // Remove Null Bytes: Postgres can't handle them.
+            .map(|uri| uri.replace('\0', ""))
+            .map_err(|err| anyhow!(err.to_string()))
+    }
+}
+
 impl Client {
     pub fn new(url: &str) -> Result<Self> {
         Ok(Self {
@@ -211,15 +230,13 @@ impl Client {
         .await
     }
 
-    pub async fn get_erc721_uri(&self, token: &NftId) -> Result<String> {
-        let contract = ERC721Metadata::new(token.address, self.provider.clone());
-        contract
-            .token_uri(token.token_id.0)
-            .call()
-            .await
-            // Remove Null Bytes: Postgres can't handle them.
-            .map(|uri| uri.replace('\0', ""))
-            .map_err(|err| anyhow!(err.to_string()))
+    pub async fn get_erc721_uri(&self, token: NftId) -> Result<String> {
+        GetErc721Uri {
+            provider: self.provider.clone(),
+            token,
+        }
+        .retry_get(3, 1)
+        .await
     }
 }
 
@@ -228,6 +245,7 @@ mod tests {
     use std::str::FromStr;
 
     use super::*;
+    use crate::types::U256;
     use maplit::{hashmap, hashset};
 
     static FREE_ETH_RPC: &str = "https://rpc.ankr.com/eth"; // Also supports
@@ -317,5 +335,61 @@ mod tests {
         let result = eth_client.get_block_receipts(10_000_000, indices).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap().keys().len(), 103);
+    }
+
+    #[tokio::test]
+    async fn get_erc721_uri() {
+        let eth_client = test_client();
+        let ens_token = NftId {
+            address: Address::from_str("0x57F1887A8BF19B14FC0DF6FD9B2ACC9AF147EA85").unwrap(),
+            token_id: U256::from_dec_str(
+                "64671196571681841248190411691641946869002480279128285790058847953168666315",
+            )
+            .unwrap(),
+        };
+
+        assert_eq!(
+            eth_client
+                .get_erc721_uri(ens_token)
+                .await
+                .unwrap_err()
+                .to_string(),
+            "Contract call reverted with data: 0x".to_string()
+        );
+
+        let bored_ape = NftId {
+            address: Address::from_str("0x2EE6AF0DFF3A1CE3F7E3414C52C48FD50D73691E").unwrap(),
+            token_id: U256::from(16),
+        };
+
+        assert!(eth_client.get_erc721_uri(bored_ape).await.is_ok());
+
+        let mla_field_agent = NftId {
+            address: Address::from_str("0x7A41E410BB784D9875FA14F2D7D2FA825466CDAE").unwrap(),
+            token_id: U256::from(3490),
+        };
+
+        assert_eq!(
+            eth_client
+                .get_erc721_uri(mla_field_agent)
+                .await
+                .unwrap_err()
+                .to_string(),
+            "Contract call reverted with data: 0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002f4552433732314d657461646174613a2055524920717565727920666f72206e6f6e6578697374656e7420746f6b656e0000000000000000000000000000000000".to_string()
+        );
+
+        // TODO - the above Err is a human readable message:
+        // #[derive(Debug, Deserialize)]
+        // struct Struct {
+        //     ERC721Metadata: String,
+        //     uri: String,
+        // }
+        // let hex_string = "08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002f4552433732314d657461646174613a2055524920717565727920666f72206e6f6e6578697374656e7420746f6b656e0000000000000000000000000000000000";
+        // let bytes = hex::decode(hex_string).expect("Failed to decode hex");
+        // let result: MyStruct = serde_json::from_slice(&bytes).expect("Failed to deserialize JSON");
+        // {
+        //   "ERC721Metadata": "URI query for nonexistent token",
+        //   "uri": "/"
+        // }
     }
 }

@@ -177,9 +177,10 @@ impl EventHandler {
         }
         if nft.token_uri.is_none() {
             // Technically we could handle this in Mint block, except the retries.
-            nft.token_uri = match self.eth_client.get_erc721_uri(&nft_id).await {
+            nft.token_uri = match self.eth_client.get_erc721_uri(nft_id).await {
                 Ok(uri) => Some(uri),
                 Err(err) => {
+                    // Contract call reverted with data: 0x
                     tracing::warn!(
                         "failed to retrieve uri for {:?} with {:?}. try again on next event",
                         nft_id,
