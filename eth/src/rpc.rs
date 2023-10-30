@@ -287,7 +287,7 @@ impl Client {
             provider: self.provider.clone(),
             address,
         }
-        .retry_get(3, 1)
+        .try_get()
         .await
         .ok()
     }
@@ -297,7 +297,7 @@ impl Client {
             provider: self.provider.clone(),
             address,
         }
-        .retry_get(3, 1)
+        .try_get()
         .await
         .ok()
     }
