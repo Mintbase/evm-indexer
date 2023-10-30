@@ -86,9 +86,8 @@ impl Nft {
 pub struct TokenContract {
     pub address: Vec<u8>,
     // token_type: TokenType,
-    name: Option<String>,
-    symbol: Option<String>,
-    decimals: Option<i16>,
+    pub name: Option<String>,
+    pub symbol: Option<String>,
     created_block: i64,
     created_tx_index: i64,
     // content_flags -> Nullable<Array<Nullable<ContentFlag>>>,
@@ -99,10 +98,9 @@ impl TokenContract {
     pub fn from_event_base(event: &EventBase) -> Self {
         Self {
             address: event.contract_address.into(),
-            // TODO - find these an put them.
+            // These are populated externally and asyncronously.
             name: None,
             symbol: None,
-            decimals: None,
             // assume that the first time a contract is seen is the created block
             created_block: event.block_number.try_into().expect("u64 conversion"),
             created_tx_index: event.transaction_index.try_into().expect("u64 conversion"),
@@ -171,7 +169,6 @@ mod tests {
                 address: base.contract_address.into(),
                 name: None,
                 symbol: None,
-                decimals: None,
                 created_block: base.block_number.try_into().unwrap(),
                 created_tx_index: base.transaction_index.try_into().unwrap(),
             }

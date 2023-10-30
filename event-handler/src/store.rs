@@ -107,6 +107,18 @@ impl DataStore {
         handle_insert_result(result, 1, format!("save_contract {:?}", contract))
     }
 
+    /// This method, as opposed to its singular counter part may be used under the assumption
+    /// that the contracts are not being updated during event handling.
+    pub fn save_contracts(&mut self, contracts: Vec<TokenContract>) {
+        let expected_inserts = contracts.len();
+        let result = diesel::insert_into(token_contracts::dsl::token_contracts)
+            .values(contracts)
+            .on_conflict(token_contracts::address)
+            .do_nothing()
+            .execute(&mut self.client);
+        handle_insert_result(result, expected_inserts, "save_contracts".to_string())
+    }
+
     pub fn set_approval_for_all(&mut self, approval: ApprovalForAll) {
         let result = diesel::insert_into(approval_for_all::dsl::approval_for_all)
             .values(&approval)
@@ -144,19 +156,9 @@ impl DataStore {
             Some(nft) => nft,
             None => {
                 tracing::debug!("new nft {:?}", nft_id);
-                self.initialize_nft(base, nft_id, tx)
+                Nft::build_from(base, nft_id, tx)
             }
         }
-    }
-
-    pub fn initialize_nft(&mut self, base: &EventBase, nft_id: &NftId, tx: &TxDetails) -> Nft {
-        // Check for contract (currently happening if new Nft is detected).
-        // We may want a more efficient way to determine if a contract has
-        // already been indexed.
-        let _ = self.load_or_initialize_contract(base);
-        // We don't save_nft yet, just construct and return.
-        // User is responsible to call save_nft.
-        Nft::build_from(base, nft_id, tx)
     }
 
     pub fn load_or_initialize_contract(&mut self, base: &EventBase) -> TokenContract {
@@ -318,7 +320,7 @@ mod tests {
         };
         assert_eq!(
             store.load_or_initialize_nft(&base, &token, &tx),
-            store.initialize_nft(&base, &token, &tx)
+            Nft::build_from(&base, &token, &tx)
         );
     }
 

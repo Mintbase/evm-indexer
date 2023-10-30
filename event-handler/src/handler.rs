@@ -1,5 +1,5 @@
 use crate::{
-    models::{Nft, Transaction},
+    models::{Nft, TokenContract, Transaction},
     store::DataStore,
 };
 use anyhow::{Context, Result};
@@ -16,6 +16,7 @@ use std::collections::{HashMap, HashSet};
 #[derive(Default, Debug, PartialEq)]
 pub struct UpdateCache {
     nfts: HashMap<NftId, Nft>,
+    contracts: HashMap<Address, TokenContract>,
     transactions: Vec<Transaction>,
     blocks: Vec<BlockData>,
 }
@@ -33,6 +34,11 @@ impl UpdateCache {
 
         // Write and clear blocks
         db.save_blocks(std::mem::take(&mut self.blocks));
+
+        // Write and clear contracts
+        db.save_contracts(std::mem::take(
+            &mut self.contracts.drain().map(|(_, v)| v).collect(),
+        ));
 
         // drain memory into database.
         for (_, nft) in self.nfts.drain() {
@@ -89,6 +95,21 @@ impl EventHandler {
         Ok(ChainData { tx_data })
     }
 
+    pub async fn check_contract(&mut self, event: &EventBase) {
+        let address = event.contract_address;
+        if self.updates.contracts.contains_key(&address)
+            || self.store.load_contract(address).is_some()
+        {
+            return;
+        }
+        tracing::info!("new contract {:?}", address);
+        let mut contract = TokenContract::from_event_base(event);
+        let details = self.eth_client.get_contract_details(address).await;
+        contract.name = details.name;
+        contract.symbol = details.symbol;
+        self.updates.contracts.insert(address, contract);
+    }
+
     pub async fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
         let event_map = self.source.get_events_for_block_range(range)?;
         for (block, block_events) in event_map.into_iter() {
@@ -98,6 +119,7 @@ impl EventHandler {
             for ((tidx, _lidx), tx_events) in block_events {
                 let tx = tx_data.get(&tidx).expect("receipt known to exist!");
                 for NftEvent { base, meta } in tx_events.into_iter() {
+                    self.check_contract(&base).await;
                     match meta {
                         EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a, tx),
                         EventMeta::Erc721Transfer(t) => {
@@ -131,7 +153,7 @@ impl EventHandler {
                 Some(nft) => nft,
                 None => {
                     tracing::warn!("approval received before token mint {:?}", nft_id);
-                    self.store.initialize_nft(&base, &nft_id, tx)
+                    Nft::build_from(&base, &nft_id, tx)
                 }
             },
         };
