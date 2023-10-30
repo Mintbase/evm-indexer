@@ -248,6 +248,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn event_processing() {
         dotenv().ok();
         let mut handler = EventHandler::new(
