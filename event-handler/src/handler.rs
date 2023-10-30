@@ -151,6 +151,8 @@ impl EventHandler {
         } else {
             Some(approval.approved.into())
         };
+        nft.last_update_block = base.block_number as i64;
+        nft.last_update_log_index = base.log_index as i64;
         self.updates.nfts.insert(nft_id, nft);
     }
 
