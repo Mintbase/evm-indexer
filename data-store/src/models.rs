@@ -68,6 +68,30 @@ impl Nft {
     }
 }
 
+#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone)]
+#[diesel(table_name = erc1155s)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct Erc1155 {
+    pub contract_address: Vec<u8>,
+    pub token_id: BigDecimal,
+    pub token_uri: Option<String>,
+    pub mint_block: i64,
+    pub mint_tx: i64,
+    pub burn_block: Option<i64>,
+    pub burn_tx: Option<i64>,
+    // TODO - add content category / flag here.
+}
+
+#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone)]
+#[diesel(table_name = erc1155_owners)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct Erc1155Owners {
+    pub contract_address: Vec<u8>,
+    pub token_id: BigDecimal,
+    pub owner: Vec<u8>,
+    pub balance: BigDecimal,
+}
+
 #[derive(Queryable, Selectable, Insertable, AsChangeset, PartialEq, Debug)]
 #[diesel(table_name = token_contracts)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -78,6 +102,8 @@ pub struct TokenContract {
     pub symbol: Option<String>,
     created_block: i64,
     created_tx_index: i64,
+    /// This is generally non-null for Erc1155s.
+    base_uri: Option<String>,
     // content_flags -> Nullable<Array<Nullable<ContentFlag>>>,
     // content_category -> Nullable<Array<Nullable<ContentCategory>>>
 }
@@ -92,6 +118,7 @@ impl TokenContract {
             // assume that the first time a contract is seen is the created block
             created_block: event.block_number.try_into().expect("u64 conversion"),
             created_tx_index: event.transaction_index.try_into().expect("u64 conversion"),
+            base_uri: None,
         }
     }
 }
@@ -159,6 +186,7 @@ mod tests {
                 symbol: None,
                 created_block: base.block_number.try_into().unwrap(),
                 created_tx_index: base.transaction_index.try_into().unwrap(),
+                base_uri: None,
             }
         )
     }

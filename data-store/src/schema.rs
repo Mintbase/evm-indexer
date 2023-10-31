@@ -65,6 +65,7 @@ diesel::table! {
         symbol -> Nullable<Text>,
         created_block -> Int8,
         created_tx_index -> Int8,
+        base_uri -> Nullable<Text>,
         // content_flags -> Nullable<Array<Nullable<ContentFlag>>>,
         // content_category -> Nullable<Array<Nullable<ContentCategory>>>,
     }
@@ -87,8 +88,33 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    erc1155s (contract_address, token_id) {
+        contract_address -> Bytea,
+        token_id -> Numeric,
+        creator_name -> Nullable<Text>,
+        creator_address -> Nullable<Bytea>,
+        token_uri -> Nullable<Text>,
+        mint_block -> BigInt,
+        mint_tx -> BigInt,
+        burn_block -> Nullable<BigInt>,
+        burn_tx -> Nullable<BigInt>,
+    }
+}
+
+diesel::table! {
+    erc1155_owners (contract_address, token_id, owner) {
+        contract_address -> Bytea,
+        token_id -> Numeric,
+        owner -> Bytea,
+        balance -> Numeric,
+    }
+}
+
 diesel::allow_tables_to_appear_in_same_query!(
     approval_for_all,
+    erc1155s,
+    erc1155_owners,
     contract_abis,
     nfts,
     token_contracts,
