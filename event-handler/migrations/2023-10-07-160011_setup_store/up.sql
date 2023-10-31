@@ -18,7 +18,6 @@ CREATE TABLE token_contracts
     -- token_type       token_type not null,
     name             text,
     symbol           text,
-    decimals         int2, -- Null for Nfts
     -- This uniquely defines creation tx
     created_block    int8       not null,
     created_tx_index int8       not null

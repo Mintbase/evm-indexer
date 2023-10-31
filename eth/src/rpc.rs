@@ -56,10 +56,6 @@ impl BlockData {
     }
 }
 
-pub struct Client {
-    provider: Arc<Provider<Http>>,
-}
-
 #[async_trait::async_trait]
 trait RetryGet<T: Send> {
     async fn try_get(&self) -> Result<T>;
@@ -76,8 +72,9 @@ trait RetryGet<T: Send> {
                         return Err(err);
                     } else {
                         tracing::debug!(
-                            "failed rpc request attempt {} - trying again in {} seconds",
+                            "failed rpc request attempt {} with error {} - trying again in {} seconds",
                             retries,
+                            err,
                             wait_secs
                         );
                         tokio::time::sleep(Duration::from_secs(wait_secs)).await;
@@ -200,6 +197,52 @@ impl RetryGet<String> for GetErc721Uri {
     }
 }
 
+struct GetName {
+    provider: Arc<Provider<Http>>,
+    address: Address,
+}
+
+#[async_trait::async_trait]
+impl RetryGet<String> for GetName {
+    async fn try_get(&self) -> Result<String> {
+        let contract = ERC721Metadata::new(self.address, self.provider.clone());
+        contract
+            .name()
+            .call()
+            .await
+            // Remove Null Bytes: Postgres can't handle them.
+            .map(|uri| uri.replace('\0', ""))
+            .map_err(|err| anyhow!(err.to_string()))
+    }
+}
+
+struct GetSymbol {
+    provider: Arc<Provider<Http>>,
+    address: Address,
+}
+
+#[async_trait::async_trait]
+impl RetryGet<String> for GetSymbol {
+    async fn try_get(&self) -> Result<String> {
+        let contract = ERC721Metadata::new(self.address, self.provider.clone());
+        contract
+            .symbol()
+            .call()
+            .await
+            // Remove Null Bytes: Postgres can't handle them.
+            .map(|uri| uri.replace('\0', ""))
+            .map_err(|err| anyhow!(err.to_string()))
+    }
+}
+#[derive(PartialEq, Debug)]
+pub struct ContractDetails {
+    pub name: Option<String>,
+    pub symbol: Option<String>,
+}
+
+pub struct Client {
+    provider: Arc<Provider<Http>>,
+}
 impl Client {
     pub fn new(url: &str) -> Result<Self> {
         Ok(Self {
@@ -237,6 +280,34 @@ impl Client {
         }
         .retry_get(3, 1)
         .await
+    }
+
+    async fn get_name(&self, address: Address) -> Option<String> {
+        GetName {
+            provider: self.provider.clone(),
+            address,
+        }
+        .try_get()
+        .await
+        .ok()
+    }
+
+    async fn get_symbol(&self, address: Address) -> Option<String> {
+        GetSymbol {
+            provider: self.provider.clone(),
+            address,
+        }
+        .try_get()
+        .await
+        .ok()
+    }
+
+    pub async fn get_contract_details(&self, address: Address) -> ContractDetails {
+        ContractDetails {
+            // TODO - fetch these simultaneously!
+            name: self.get_name(address).await,
+            symbol: self.get_symbol(address).await,
+        }
     }
 }
 
@@ -391,5 +462,36 @@ mod tests {
         //   "ERC721Metadata": "URI query for nonexistent token",
         //   "uri": "/"
         // }
+    }
+
+    #[tokio::test]
+    async fn get_contract_details() {
+        let eth_client = test_client();
+        let ens_contract = Address::from_str("0x57F1887A8BF19B14FC0DF6FD9B2ACC9AF147EA85").unwrap();
+        assert_eq!(
+            eth_client.get_contract_details(ens_contract).await,
+            ContractDetails {
+                name: None,
+                symbol: None,
+            }
+        );
+        let bored_ape_contract =
+            Address::from_str("0x2EE6AF0DFF3A1CE3F7E3414C52C48FD50D73691E").unwrap();
+        assert_eq!(
+            eth_client.get_contract_details(bored_ape_contract).await,
+            ContractDetails {
+                name: Some("Bored Ape Yacht Club".to_string()),
+                symbol: Some("BAYC".to_string()),
+            }
+        );
+        let mla_field_agent =
+            Address::from_str("0x7A41E410BB784D9875FA14F2D7D2FA825466CDAE").unwrap();
+        assert_eq!(
+            eth_client.get_contract_details(mla_field_agent).await,
+            ContractDetails {
+                name: Some("Meta Labs Field Agents".to_string()),
+                symbol: Some("MLA1".to_string()),
+            }
+        );
     }
 }

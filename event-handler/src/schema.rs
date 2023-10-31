@@ -62,7 +62,6 @@ diesel::table! {
         // token_type -> TokenType,
         name -> Nullable<Text>,
         symbol -> Nullable<Text>,
-        decimals -> Nullable<Int2>,
         created_block -> Int8,
         created_tx_index -> Int8,
         // content_flags -> Nullable<Array<Nullable<ContentFlag>>>,
