@@ -5,6 +5,7 @@ use ethers::{
     middleware::Middleware,
     prelude::abigen,
     providers::{Http, Provider},
+    utils::hex,
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -59,7 +60,20 @@ impl BlockData {
 #[async_trait::async_trait]
 trait RetryGet<T: Send> {
     async fn try_get(&self) -> Result<T>;
-
+    fn is_retryable_error(error: &anyhow::Error) -> bool {
+        let error_string = error.to_string();
+        if error_string.contains("Contract call reverted with data:") {
+            let hex_string = error_string
+                .split_whitespace()
+                .last()
+                .expect("known error pattern");
+            let bytes = hex::decode(hex_string).expect("Failed to decode hex");
+            let decoded_message = String::from_utf8_lossy(&bytes);
+            tracing::warn!("Contract call reverted with message: {}", decoded_message);
+            return false;
+        }
+        true
+    }
     // so this shouldn't only retry from one provider, but from multiple, esp. at the top of the chain
     async fn retry_get(&self, max_retries: u32, wait_secs: u64) -> Result<T> {
         let mut retries = 0;
@@ -68,7 +82,7 @@ trait RetryGet<T: Send> {
                 Ok(result) => return Ok(result),
                 Err(err) => {
                     retries += 1;
-                    if retries >= max_retries {
+                    if !Self::is_retryable_error(&err) || retries >= max_retries {
                         return Err(err);
                     } else {
                         tracing::debug!(
@@ -287,7 +301,7 @@ impl Client {
             provider: self.provider.clone(),
             address,
         }
-        .try_get()
+        .retry_get(3, 1)
         .await
         .ok()
     }
@@ -297,7 +311,7 @@ impl Client {
             provider: self.provider.clone(),
             address,
         }
-        .try_get()
+        .retry_get(3, 1)
         .await
         .ok()
     }
@@ -318,6 +332,7 @@ mod tests {
     use super::*;
     use crate::types::U256;
     use maplit::{hashmap, hashset};
+    use tracing_test::traced_test;
 
     static FREE_ETH_RPC: &str = "https://rpc.ankr.com/eth"; // Also supports
 
@@ -448,20 +463,6 @@ mod tests {
                 .to_string(),
             "Contract call reverted with data: 0x08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002f4552433732314d657461646174613a2055524920717565727920666f72206e6f6e6578697374656e7420746f6b656e0000000000000000000000000000000000".to_string()
         );
-
-        // TODO - the above Err is a human readable message:
-        // #[derive(Debug, Deserialize)]
-        // struct Struct {
-        //     ERC721Metadata: String,
-        //     uri: String,
-        // }
-        // let hex_string = "08c379a00000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000002f4552433732314d657461646174613a2055524920717565727920666f72206e6f6e6578697374656e7420746f6b656e0000000000000000000000000000000000";
-        // let bytes = hex::decode(hex_string).expect("Failed to decode hex");
-        // let result: MyStruct = serde_json::from_slice(&bytes).expect("Failed to deserialize JSON");
-        // {
-        //   "ERC721Metadata": "URI query for nonexistent token",
-        //   "uri": "/"
-        // }
     }
 
     #[tokio::test]
@@ -493,5 +494,29 @@ mod tests {
                 symbol: Some("MLA1".to_string()),
             }
         );
+    }
+    #[tokio::test]
+    #[traced_test]
+    async fn test_non_retryable_error() {
+        let eth_client = test_client();
+        let ens_contract = Address::from_str("0x57F1887A8BF19B14FC0DF6FD9B2ACC9AF147EA85").unwrap();
+        eth_client.get_contract_details(ens_contract).await;
+
+        let warn_message = "Contract call reverted with message:";
+        // Ensure that certain strings are or aren't logged
+        assert!(logs_contain(warn_message));
+        assert!(!logs_contain("failed rpc request attempt"));
+
+        // Ensure that the string `logged` is logged exactly twice
+        logs_assert(|lines: &[&str]| {
+            match lines
+                .iter()
+                .filter(|line| line.contains(warn_message))
+                .count()
+            {
+                2 => Ok(()),
+                n => Err(format!("Expected two matching logs, but found {}", n)),
+            }
+        });
     }
 }
