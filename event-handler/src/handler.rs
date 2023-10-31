@@ -466,7 +466,6 @@ mod tests {
                 burn_tx: None,
                 minter: tx.from.into(),
                 approved: None,
-                json: None
             },
             "first transfer"
         );
@@ -505,7 +504,6 @@ mod tests {
                 burn_tx: None,
                 minter: tx.from.into(),
                 approved: None,
-                json: None
             },
             "transfer back"
         );
@@ -544,7 +542,6 @@ mod tests {
                 burn_tx: Some(base_3.transaction_index as i64),
                 minter: tx.from.into(),
                 approved: None,
-                json: None
             },
             "burn transfer"
         );

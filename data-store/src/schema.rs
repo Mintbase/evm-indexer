@@ -48,7 +48,6 @@ diesel::table! {
         burn_tx -> Nullable<Int8>,
         minter -> Bytea,
         approved -> Nullable<Bytea>,
-        json -> Nullable<Jsonb>,
     }
 }
 

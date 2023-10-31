@@ -43,7 +43,6 @@ pub struct Nft {
     pub burn_tx: Option<i64>,
     pub minter: Vec<u8>,
     pub approved: Option<Vec<u8>>,
-    pub json: Option<Value>,
     // TODO - add content category / flag here.
 }
 
@@ -112,7 +111,7 @@ impl TokenContract {
     pub fn from_event_base(event: &EventBase) -> Self {
         Self {
             address: event.contract_address.into(),
-            // These are populated externally and asyncronously.
+            // These are populated externally and asynchronously.
             name: None,
             symbol: None,
             // assume that the first time a contract is seen is the created block
