@@ -2,10 +2,7 @@ use crate::schema::*;
 use bigdecimal::BigDecimal;
 use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
 use diesel::{AsChangeset, Insertable, Queryable, Selectable};
-use eth::{
-    rpc::{BlockData, TxDetails},
-    types::{Address, NftId},
-};
+use eth::types::{Address, BlockData, NftId, TxDetails};
 use event_retriever::db_reader::models::EventBase;
 use serde_json::Value;
 

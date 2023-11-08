@@ -4,14 +4,20 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use eth::{
-    rpc::{BlockData, Client as EthClient, TxDetails},
-    types::{Address, NftId},
+    rpc::ethers::Client as EthersClient,
+    rpc::ethrpc::Client as EthClient,
+    rpc::EthNodeReading,
+    types::{Address, BlockData, NftId, TxDetails},
 };
 use event_retriever::db_reader::{
     diesel::{BlockRange, EventSource},
     models::*,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+
+const ENS_CONTRACT: [u8; 20] = [
+    87, 241, 136, 122, 139, 241, 155, 20, 252, 13, 246, 253, 155, 42, 204, 154, 241, 71, 234, 133,
+];
 
 #[derive(Default, Debug, PartialEq)]
 pub struct UpdateCache {
@@ -48,9 +54,7 @@ impl UpdateCache {
     }
 }
 
-pub struct ChainData {
-    tx_data: HashMap<u64, TxDetails>,
-}
+pub type ChainData = HashMap<u64, TxDetails>;
 
 pub struct EventHandler {
     /// Source of events for processing
@@ -61,6 +65,7 @@ pub struct EventHandler {
     updates: UpdateCache,
     /// Web3 Provider
     eth_client: EthClient,
+    ethers_client: EthersClient,
 }
 
 impl EventHandler {
@@ -70,32 +75,35 @@ impl EventHandler {
             store: DataStore::new(store_url).context("init DataStore")?,
             updates: UpdateCache::default(),
             eth_client: EthClient::new(eth_rpc).context("init EthClient")?,
+            ethers_client: EthersClient::new(eth_rpc).context("init EthClient")?,
         })
     }
 
     pub async fn load_chain_data(
         &mut self,
-        block: u64,
-        indices: HashSet<u64>,
-    ) -> Result<ChainData> {
-        let tx_data = self.eth_client.get_block_receipts(block, indices).await?;
-        self.updates.transactions.extend(
-            tx_data
-                .clone()
-                .into_iter()
-                .map(|(idx, data)| Transaction::new(block, idx, data)),
-        );
+        range: BlockRange, // indices: HashSet<u64>,
+    ) -> Result<HashMap<u64, ChainData>> {
+        let tx_data = self
+            .ethers_client
+            .get_receipts_for_range(range.start as u64, range.end as u64)
+            .await?;
+        self.updates
+            .transactions
+            .extend(tx_data.clone().into_iter().flat_map(|(block, block_data)| {
+                block_data
+                    .into_iter()
+                    .map(move |(idx, data)| Transaction::new(block, idx, data))
+            }));
         // TODO - fetch all at once with: https://github.com/Mintbase/evm-indexer/issues/57
         let block_info = self
             .eth_client
-            .get_block(block)
-            .await?
-            .expect("block exists");
-        self.updates.blocks.push(block_info);
-        Ok(ChainData { tx_data })
+            .get_blocks_for_range(range.start as u64, range.end as u64)
+            .await?;
+        self.updates.blocks.extend(block_info.into_values());
+        Ok(tx_data)
     }
 
-    pub async fn check_for_contract(&mut self, event: &EventBase) {
+    fn check_for_contract(&mut self, event: &EventBase) {
         let address = event.contract_address;
         if self.updates.contracts.contains_key(&address)
             || self.store.load_contract(address).is_some()
@@ -103,28 +111,56 @@ impl EventHandler {
             return;
         }
         tracing::info!("new contract {:?}", address);
-        let mut contract = TokenContract::from_event_base(event);
-        let details = self.eth_client.get_contract_details(address).await;
-        contract.name = details.name;
-        contract.symbol = details.symbol;
-        self.updates.contracts.insert(address, contract);
+        self.updates
+            .contracts
+            .insert(address, TokenContract::from_event_base(event));
+    }
+
+    async fn get_missing_node_data(&mut self) {
+        let mut missing_uris = self
+            .eth_client
+            .get_uris(
+                self.updates
+                    .nfts
+                    .iter()
+                    // Without additional specification here this will retry to fetch things
+                    // We can prevent this by perhaps by filtering also for range.start < mint_block
+                    .filter(|(_, token)| token.token_uri.is_none())
+                    .map(|(id, _)| id)
+                    .collect(),
+            )
+            .await;
+        for (id, nft) in self.updates.nfts.iter_mut() {
+            if let Some(uri) = missing_uris.remove(id) {
+                nft.token_uri = uri;
+            }
+        }
+
+        let mut contract_details = self
+            .eth_client
+            .get_contract_details(self.updates.contracts.keys().copied().collect())
+            .await;
+
+        for (id, contract) in self.updates.contracts.iter_mut() {
+            if let Some(details) = contract_details.remove(id) {
+                contract.name = details.name;
+                contract.symbol = details.symbol;
+            }
+        }
     }
 
     pub async fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
         let event_map = self.source.get_events_for_block_range(range)?;
+        let mut block_data = self.load_chain_data(range).await?;
         for (block, block_events) in event_map.into_iter() {
-            let ChainData { tx_data } = self
-                .load_chain_data(block, block_events.keys().cloned().map(|k| k.0).collect())
-                .await?;
+            let tx_data = block_data.remove(&block).expect("always blue");
             for ((tidx, _lidx), tx_events) in block_events {
                 let tx = tx_data.get(&tidx).expect("receipt known to exist!");
                 for NftEvent { base, meta } in tx_events.into_iter() {
-                    self.check_for_contract(&base).await;
+                    self.check_for_contract(&base);
                     match meta {
                         EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a, tx),
-                        EventMeta::Erc721Transfer(t) => {
-                            self.handle_erc721_transfer(base, t, tx).await
-                        }
+                        EventMeta::Erc721Transfer(t) => self.handle_erc721_transfer(base, t, tx),
                         _ => {
                             tracing::error!("unhandled event!");
                             continue;
@@ -133,6 +169,11 @@ impl EventHandler {
                 }
             }
         }
+
+        // Retrieve missing data from node.
+        self.get_missing_node_data().await;
+
+        // Drain cache and write to store
         self.updates.write(&mut self.store);
         Ok(())
     }
@@ -178,7 +219,7 @@ impl EventHandler {
         self.updates.nfts.insert(nft_id, nft);
     }
 
-    async fn handle_erc721_transfer(
+    fn handle_erc721_transfer(
         &mut self,
         base: EventBase,
         transfer: Erc721Transfer,
@@ -224,22 +265,14 @@ impl EventHandler {
         if transfer.from == Address::zero() {
             // Mint: This case is already handled by load_or_initialize
         }
-        if nft.token_uri.is_none() {
-            // Technically we could handle this in Mint block, except the retries.
-            nft.token_uri = match self.eth_client.get_erc721_uri(nft_id).await {
-                Ok(uri) => Some(uri),
-                Err(err) => {
-                    // Contract call reverted with data: 0x
-                    tracing::warn!(
-                        "failed to retrieve uri for {:?} with {:?}. try again on next event",
-                        nft_id,
-                        err
-                    );
-                    None
-                }
-            }
+        //
+        if nft.contract_address == ENS_CONTRACT.to_vec() && nft.token_uri.is_none() {
+            nft.token_uri = Some(format!(
+                "https://metadata.ens.domains/mainnet/0x57f1887a8bf19b14fc0df6fd9b2acc9af147ea85/{}",
+                nft.token_id.to_string().replace('\"', "")
+            ));
         }
-        nft.owner = transfer.to.0.as_bytes().to_vec();
+        nft.owner = transfer.to.0.as_slice().to_vec();
         nft.last_update_block = block;
         nft.last_update_log_index = log_index;
         nft.last_transfer_block = Some(block);
@@ -273,20 +306,17 @@ mod tests {
     #[ignore]
     async fn event_processing() {
         dotenv().ok();
-        let mut handler = EventHandler::new(
-            TEST_SOURCE_URL,
-            TEST_STORE_URL,
-            &std::env::var("NODE_URL").unwrap_or(TEST_ETH_RPC.to_string()),
-        )
-        .unwrap();
-        let block = 15_000_000;
+        let mut handler = EventHandler::new(TEST_SOURCE_URL, TEST_STORE_URL, TEST_ETH_RPC).unwrap();
+        // handler.store.clear_tables();
+
+        let block = 15_002_050;
         assert!(handler
             .process_events_for_block_range(BlockRange {
                 start: block,
-                end: block + 5,
+                end: block + 10,
             })
             .await
-            .is_ok())
+            .is_ok());
         // TODO - construct a sequence of events and actually check the Store State is as expected here.
     }
 
@@ -330,8 +360,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn erc721_approval_handler() {
+    #[tokio::test]
+    async fn erc721_approval_handler() {
         let SetupData {
             mut handler,
             token_id: _,
@@ -390,9 +420,7 @@ mod tests {
         let from = Address::from(2);
         let to = Address::from(3);
         let first_transfer = Erc721Transfer { from, to, token_id };
-        handler
-            .handle_erc721_transfer(base, first_transfer.clone(), &tx)
-            .await;
+        handler.handle_erc721_transfer(base, first_transfer.clone(), &tx);
 
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap(),
@@ -422,17 +450,15 @@ mod tests {
             contract_address: base.contract_address,
         };
         // Transfer back
-        handler
-            .handle_erc721_transfer(
-                base_2,
-                Erc721Transfer {
-                    from: to,
-                    to: from,
-                    token_id,
-                },
-                &tx,
-            )
-            .await;
+        handler.handle_erc721_transfer(
+            base_2,
+            Erc721Transfer {
+                from: to,
+                to: from,
+                token_id,
+            },
+            &tx,
+        );
 
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap(),
@@ -463,17 +489,15 @@ mod tests {
             transaction_index: 9,
             contract_address: base.contract_address,
         };
-        handler
-            .handle_erc721_transfer(
-                base_3,
-                Erc721Transfer {
-                    from,
-                    to: Address::zero(),
-                    token_id,
-                },
-                &tx,
-            )
-            .await;
+        handler.handle_erc721_transfer(
+            base_3,
+            Erc721Transfer {
+                from,
+                to: Address::zero(),
+                token_id,
+            },
+            &tx,
+        );
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap(),
             &Nft {
@@ -497,9 +521,7 @@ mod tests {
         );
 
         // Idempotency: try to replay earlier transfers
-        handler
-            .handle_erc721_transfer(base, first_transfer, &tx)
-            .await;
+        handler.handle_erc721_transfer(base, first_transfer, &tx);
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap().owner,
             [0u8; 20].to_vec(),
