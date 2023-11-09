@@ -4,7 +4,9 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use eth::{
-    rpc::ethers::Client as EthClient,
+    rpc::ethers::Client as EthersClient,
+    rpc::ethrpc::Client as EthRpcClient,
+    rpc::EthNodeReading,
     types::{Address, BlockData, NftId, TxDetails},
 };
 use event_retriever::db_reader::{
@@ -48,9 +50,7 @@ impl UpdateCache {
     }
 }
 
-pub struct ChainData {
-    tx_data: HashMap<u64, TxDetails>,
-}
+pub type ChainData = HashMap<u64, TxDetails>;
 
 pub struct EventHandler {
     /// Source of events for processing
@@ -60,7 +60,8 @@ pub struct EventHandler {
     /// A memory store updates.
     updates: UpdateCache,
     /// Web3 Provider
-    eth_client: EthClient,
+    eth_client: EthRpcClient,
+    ethers_client: EthersClient,
 }
 
 impl EventHandler {
@@ -69,29 +70,33 @@ impl EventHandler {
             source: EventSource::new(source_url).context("init EventSource")?,
             store: DataStore::new(store_url).context("init DataStore")?,
             updates: UpdateCache::default(),
-            eth_client: EthClient::new(eth_rpc).context("init EthClient")?,
+            eth_client: EthRpcClient::new(eth_rpc).context("init EthRpcClient")?,
+            ethers_client: EthersClient::new(eth_rpc).context("init EthersClient")?,
         })
     }
 
-    pub async fn load_chain_data(&mut self, block: u64) -> Result<ChainData> {
-        let tx_data = self.eth_client.get_block_receipts(block).await?;
-        self.updates.transactions.extend(
-            tx_data
-                .clone()
-                .into_iter()
-                .map(|(idx, data)| Transaction::new(block, idx, data)),
-        );
+    pub async fn load_chain_data(&mut self, range: BlockRange) -> Result<HashMap<u64, ChainData>> {
+        let tx_data = self
+            .ethers_client
+            .get_receipts_for_range(range.start as u64, range.end as u64)
+            .await?;
+        self.updates
+            .transactions
+            .extend(tx_data.clone().into_iter().flat_map(|(block, block_data)| {
+                block_data
+                    .into_iter()
+                    .map(move |(idx, data)| Transaction::new(block, idx, data))
+            }));
         // TODO - fetch all at once with: https://github.com/Mintbase/evm-indexer/issues/57
         let block_info = self
             .eth_client
-            .get_block(block)
-            .await?
-            .expect("block exists");
-        self.updates.blocks.push(block_info);
-        Ok(ChainData { tx_data })
+            .get_blocks_for_range(range.start as u64, range.end as u64)
+            .await?;
+        self.updates.blocks.extend(block_info.into_values());
+        Ok(tx_data)
     }
 
-    pub async fn check_for_contract(&mut self, event: &EventBase) {
+    fn check_for_contract(&mut self, event: &EventBase) {
         let address = event.contract_address;
         if self.updates.contracts.contains_key(&address)
             || self.store.load_contract(address).is_some()
@@ -99,26 +104,56 @@ impl EventHandler {
             return;
         }
         tracing::info!("new contract {:?}", address);
-        let mut contract = TokenContract::from_event_base(event);
-        let details = self.eth_client.get_contract_details(address).await;
-        contract.name = details.name;
-        contract.symbol = details.symbol;
-        self.updates.contracts.insert(address, contract);
+        self.updates
+            .contracts
+            .insert(address, TokenContract::from_event_base(event));
+    }
+
+    async fn get_missing_node_data(&mut self) {
+        let mut missing_uris = self
+            .eth_client
+            .get_uris(
+                self.updates
+                    .nfts
+                    .iter()
+                    // Without additional specification here this will retry to fetch things
+                    // We can prevent this by perhaps by filtering also for range.start < mint_block
+                    .filter(|(_, token)| token.token_uri.is_none())
+                    .map(|(id, _)| id)
+                    .collect(),
+            )
+            .await;
+        for (id, nft) in self.updates.nfts.iter_mut() {
+            if let Some(uri) = missing_uris.remove(id) {
+                nft.token_uri = uri;
+            }
+        }
+
+        let mut contract_details = self
+            .eth_client
+            .get_contract_details(self.updates.contracts.keys().copied().collect())
+            .await;
+
+        for (id, contract) in self.updates.contracts.iter_mut() {
+            if let Some(details) = contract_details.remove(id) {
+                contract.name = details.name;
+                contract.symbol = details.symbol;
+            }
+        }
     }
 
     pub async fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
         let event_map = self.source.get_events_for_block_range(range)?;
+        let mut block_data = self.load_chain_data(range).await?;
         for (block, block_events) in event_map.into_iter() {
-            let ChainData { tx_data } = self.load_chain_data(block).await?;
+            let tx_data = block_data.remove(&block).expect("always blue");
             for ((tidx, _lidx), tx_events) in block_events {
                 let tx = tx_data.get(&tidx).expect("receipt known to exist!");
                 for NftEvent { base, meta } in tx_events.into_iter() {
-                    self.check_for_contract(&base).await;
+                    self.check_for_contract(&base);
                     match meta {
                         EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a, tx),
-                        EventMeta::Erc721Transfer(t) => {
-                            self.handle_erc721_transfer(base, t, tx).await
-                        }
+                        EventMeta::Erc721Transfer(t) => self.handle_erc721_transfer(base, t, tx),
                         _ => {
                             tracing::error!("unhandled event!");
                             continue;
@@ -127,6 +162,11 @@ impl EventHandler {
                 }
             }
         }
+
+        // Retrieve missing data from node.
+        self.get_missing_node_data().await;
+
+        // Drain cache and write to store
         self.updates.write(&mut self.store);
         Ok(())
     }
@@ -172,7 +212,7 @@ impl EventHandler {
         self.updates.nfts.insert(nft_id, nft);
     }
 
-    async fn handle_erc721_transfer(
+    fn handle_erc721_transfer(
         &mut self,
         base: EventBase,
         transfer: Erc721Transfer,
@@ -217,21 +257,6 @@ impl EventHandler {
         }
         if transfer.from == Address::zero() {
             // Mint: This case is already handled by load_or_initialize
-        }
-        if nft.token_uri.is_none() {
-            // Technically we could handle this in Mint block, except the retries.
-            nft.token_uri = match self.eth_client.get_erc721_uri(nft_id).await {
-                Ok(uri) => Some(uri),
-                Err(err) => {
-                    // Contract call reverted with data: 0x
-                    tracing::warn!(
-                        "failed to retrieve uri for {:?} with {:?}. try again on next event",
-                        nft_id,
-                        err
-                    );
-                    None
-                }
-            }
         }
         nft.owner = transfer.to.0.as_slice().to_vec();
         nft.last_update_block = block;
@@ -280,7 +305,7 @@ mod tests {
                 end: block + 5,
             })
             .await
-            .is_ok())
+            .is_ok());
         // TODO - construct a sequence of events and actually check the Store State is as expected here.
     }
 
@@ -324,8 +349,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn erc721_approval_handler() {
+    #[tokio::test]
+    async fn erc721_approval_handler() {
         let SetupData {
             mut handler,
             token_id: _,
@@ -384,9 +409,7 @@ mod tests {
         let from = Address::from(2);
         let to = Address::from(3);
         let first_transfer = Erc721Transfer { from, to, token_id };
-        handler
-            .handle_erc721_transfer(base, first_transfer.clone(), &tx)
-            .await;
+        handler.handle_erc721_transfer(base, first_transfer.clone(), &tx);
 
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap(),
@@ -416,17 +439,15 @@ mod tests {
             contract_address: base.contract_address,
         };
         // Transfer back
-        handler
-            .handle_erc721_transfer(
-                base_2,
-                Erc721Transfer {
-                    from: to,
-                    to: from,
-                    token_id,
-                },
-                &tx,
-            )
-            .await;
+        handler.handle_erc721_transfer(
+            base_2,
+            Erc721Transfer {
+                from: to,
+                to: from,
+                token_id,
+            },
+            &tx,
+        );
 
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap(),
@@ -457,17 +478,15 @@ mod tests {
             transaction_index: 9,
             contract_address: base.contract_address,
         };
-        handler
-            .handle_erc721_transfer(
-                base_3,
-                Erc721Transfer {
-                    from,
-                    to: Address::zero(),
-                    token_id,
-                },
-                &tx,
-            )
-            .await;
+        handler.handle_erc721_transfer(
+            base_3,
+            Erc721Transfer {
+                from,
+                to: Address::zero(),
+                token_id,
+            },
+            &tx,
+        );
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap(),
             &Nft {
@@ -491,9 +510,7 @@ mod tests {
         );
 
         // Idempotency: try to replay earlier transfers
-        handler
-            .handle_erc721_transfer(base, first_transfer, &tx)
-            .await;
+        handler.handle_erc721_transfer(base, first_transfer, &tx);
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap().owner,
             [0u8; 20].to_vec(),
