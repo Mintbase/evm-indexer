@@ -1,10 +1,7 @@
 use crate::{models::*, schema::*};
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, Connection, RunQueryDsl};
-use eth::{
-    rpc::{BlockData, TxDetails},
-    types::{Address, NftId},
-};
+use eth::types::{Address, BlockData, NftId, TxDetails};
 use event_retriever::db_reader::models::EventBase;
 
 pub struct DataStore {
@@ -179,10 +176,7 @@ mod tests {
     use super::*;
     use crate::schema::contract_abis;
     use diesel::{QueryDsl, RunQueryDsl};
-    use eth::{
-        rpc::TxDetails,
-        types::{Address, Bytes32, U256},
-    };
+    use eth::types::{Address, Bytes32, TxDetails, U256};
     use event_retriever::db_reader::models::EventBase;
 
     static TEST_STORE_URL: &str = "postgresql://postgres:postgres@localhost:5432/store";
