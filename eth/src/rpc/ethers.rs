@@ -305,7 +305,7 @@ impl Client {
         let futures = range
             .clone()
             .map(|block: u64| self.get_block_receipts(block));
-        let x: HashMap<u64, HashMap<u64, TxDetails>> = range
+        Ok(range
             .into_iter()
             .zip(join_all(futures).await)
             .map(|(block, result)| {
@@ -314,15 +314,13 @@ impl Client {
                     match result {
                         Ok(data) => data,
                         Err(err) => {
-                            tracing::error!("Failed to get receipt for block {}", block);
-                            println!("Failed to get receipt for block {}: {:?}", block, err);
+                            tracing::error!("Failed to get receipt for block {}: {:?}", block, err);
                             HashMap::new()
                         }
                     },
                 )
             })
-            .collect();
-        Ok(x)
+            .collect())
     }
 }
 

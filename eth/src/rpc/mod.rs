@@ -1,5 +1,5 @@
 pub mod ethers;
-// pub mod ethrpc;
+pub mod ethrpc;
 use crate::types::{Address, BlockData, ContractDetails, NftId};
 use anyhow::Result;
 use async_trait::async_trait;
