@@ -4,14 +4,14 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use eth::{
-    rpc::Client as EthClient,
+    rpc::ethers::Client as EthClient,
     types::{Address, BlockData, NftId, TxDetails},
 };
 use event_retriever::db_reader::{
     diesel::{BlockRange, EventSource},
     models::*,
 };
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 #[derive(Default, Debug, PartialEq)]
 pub struct UpdateCache {
@@ -73,12 +73,8 @@ impl EventHandler {
         })
     }
 
-    pub async fn load_chain_data(
-        &mut self,
-        block: u64,
-        indices: HashSet<u64>,
-    ) -> Result<ChainData> {
-        let tx_data = self.eth_client.get_block_receipts(block, indices).await?;
+    pub async fn load_chain_data(&mut self, block: u64) -> Result<ChainData> {
+        let tx_data = self.eth_client.get_block_receipts(block).await?;
         self.updates.transactions.extend(
             tx_data
                 .clone()
@@ -113,9 +109,7 @@ impl EventHandler {
     pub async fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
         let event_map = self.source.get_events_for_block_range(range)?;
         for (block, block_events) in event_map.into_iter() {
-            let ChainData { tx_data } = self
-                .load_chain_data(block, block_events.keys().cloned().map(|k| k.0).collect())
-                .await?;
+            let ChainData { tx_data } = self.load_chain_data(block).await?;
             for ((tidx, _lidx), tx_events) in block_events {
                 let tx = tx_data.get(&tidx).expect("receipt known to exist!");
                 for NftEvent { base, meta } in tx_events.into_iter() {
