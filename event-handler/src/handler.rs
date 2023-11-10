@@ -110,9 +110,9 @@ impl EventHandler {
     }
 
     async fn get_missing_node_data(&mut self) {
-        let mut missing_uris = self
+        let (mut missing_uris, mut contract_details) = self
             .eth_client
-            .get_uris(
+            .get_uris_and_contract_details(
                 self.updates
                     .nfts
                     .iter()
@@ -121,24 +121,24 @@ impl EventHandler {
                     .filter(|(_, token)| token.token_uri.is_none())
                     .map(|(id, _)| id)
                     .collect(),
+                self.updates.contracts.keys().copied().collect(),
             )
             .await;
-        for (id, nft) in self.updates.nfts.iter_mut() {
-            if let Some(uri) = missing_uris.remove(id) {
-                nft.token_uri = uri;
+
+        for (id, possible_uri) in missing_uris.drain() {
+            if let Some(uri) = possible_uri {
+                self.updates.nfts.get_mut(&id).expect("known").token_uri = Some(uri);
             }
         }
 
-        let mut contract_details = self
-            .eth_client
-            .get_contract_details(self.updates.contracts.keys().copied().collect())
-            .await;
-
-        for (id, contract) in self.updates.contracts.iter_mut() {
-            if let Some(details) = contract_details.remove(id) {
-                contract.name = details.name;
-                contract.symbol = details.symbol;
-            }
+        for (address, details) in contract_details.drain() {
+            let contract = self
+                .updates
+                .contracts
+                .get_mut(&address)
+                .expect("known to exist");
+            contract.name = details.name;
+            contract.symbol = details.symbol;
         }
     }
 
