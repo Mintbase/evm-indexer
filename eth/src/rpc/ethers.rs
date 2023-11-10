@@ -321,8 +321,7 @@ impl Client {
                     },
                 )
             })
-            .collect()
-      )
+            .collect())
     }
 }
 
