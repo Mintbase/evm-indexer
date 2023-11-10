@@ -314,8 +314,7 @@ impl Client {
                     match result {
                         Ok(data) => data,
                         Err(err) => {
-                            tracing::error!("Failed to get receipt for block {}", block);
-                            println!("Failed to get receipt for block {}: {:?}", block, err);
+                            tracing::error!("Failed to get receipt for block {}: {:?}", block, err);
                             HashMap::new()
                         }
                     },
