@@ -3,15 +3,15 @@ use diesel::{
     self,
     data_types::PgNumeric,
     deserialize::{self, FromSql},
+    internal::derives::multiconnection::chrono::NaiveDateTime,
     pg::{Pg, PgValue},
     sql_types::{Binary, Numeric, SqlType},
     Queryable,
 };
-use ethers::{
-    abi::ethereum_types::FromDecStrErr,
-    types::{H160, H256, U256 as Uint256},
-};
-use std::str::FromStr;
+// use ethers::types::H256;
+use ethrpc::types::{Address as H160, Digest as H256, U256 as Uint256};
+use solabi::ethprim::{ParseAddressError, ParseDigestError};
+use std::{num::ParseIntError, str::FromStr};
 
 /// An address. Can be an EOA or a smart contract address.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SqlType)]
@@ -34,7 +34,7 @@ impl Queryable<Binary, Pg> for Address {
 
 impl Address {
     pub fn zero() -> Self {
-        Self(H160::zero())
+        Self(H160([0; 20]))
     }
 
     /// ! WARNING! This function is meant to be used by Diesel
@@ -47,7 +47,13 @@ impl Address {
 
 impl From<Address> for Vec<u8> {
     fn from(value: Address) -> Self {
-        value.0.as_bytes().to_vec()
+        value.0.as_slice().to_vec()
+    }
+}
+
+impl From<ethers::types::Address> for Address {
+    fn from(value: ethers::types::Address) -> Self {
+        Self::from(value.0)
     }
 }
 
@@ -82,7 +88,7 @@ impl From<H160> for Address {
 }
 
 impl FromStr for Address {
-    type Err = rustc_hex::FromHexError;
+    type Err = ParseAddressError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match H160::from_str(s) {
@@ -94,13 +100,15 @@ impl FromStr for Address {
 
 impl From<u64> for Address {
     fn from(value: u64) -> Self {
-        Address(H160::from_low_u64_be(value))
+        let mut new_array: [u8; 20] = [0; 20];
+        new_array[12..].copy_from_slice(&value.to_be_bytes());
+        Self(H160(new_array))
     }
 }
 
 impl From<[u8; 20]> for Address {
     fn from(value: [u8; 20]) -> Self {
-        Address(H160::from(value))
+        Self(H160(value))
     }
 }
 
@@ -131,13 +139,23 @@ impl Queryable<Numeric, Pg> for U256 {
 
 impl From<BigDecimal> for U256 {
     fn from(val: BigDecimal) -> Self {
-        U256(Uint256::from_dec_str(&val.to_string()).expect("Invalid value"))
+        U256(Uint256::from_str(&val.to_string()).expect("Invalid value"))
     }
 }
 
 impl From<U256> for BigDecimal {
     fn from(value: U256) -> Self {
         BigDecimal::from_str_radix(&value.0.to_string(), 10).unwrap()
+    }
+}
+
+impl From<ethers::types::U256> for U256 {
+    fn from(value: ethers::types::U256) -> Self {
+        // ethrpc uses [u128; 2] for U256 and ethers uses [u64; 4] we convert between the two.
+        let arr = value.0;
+        let first_u128 = ((arr[1] as u128) << 64) | (arr[0] as u128);
+        let second_u128 = ((arr[3] as u128) << 64) | (arr[2] as u128);
+        Self(Uint256([first_u128, second_u128]))
     }
 }
 
@@ -148,8 +166,8 @@ impl From<u64> for U256 {
 }
 
 impl U256 {
-    pub fn from_dec_str(value: &str) -> Result<Self, FromDecStrErr> {
-        match Uint256::from_dec_str(value) {
+    pub fn from_dec_str(value: &str) -> Result<Self, ParseIntError> {
+        match Uint256::from_str(value) {
             Ok(res) => Ok(U256(res)),
             Err(err) => Err(err),
         }
@@ -176,7 +194,7 @@ impl Queryable<Binary, Pg> for Bytes32 {
 
 impl Bytes32 {
     pub fn zero() -> Self {
-        Self(H256::zero())
+        Self(H256([0; 32]))
     }
 
     /// ! WARNING! This function is meant to be used by Diesel
@@ -189,7 +207,7 @@ impl Bytes32 {
 
 impl From<Bytes32> for Vec<u8> {
     fn from(value: Bytes32) -> Self {
-        value.0.as_bytes().to_vec()
+        value.0.as_slice().to_vec()
     }
 }
 
@@ -223,8 +241,14 @@ impl From<H256> for Bytes32 {
     }
 }
 
+impl From<ethers::types::H256> for Bytes32 {
+    fn from(value: ethers::types::H256) -> Self {
+        Self::from(value.0)
+    }
+}
+
 impl FromStr for Bytes32 {
-    type Err = rustc_hex::FromHexError;
+    type Err = ParseDigestError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match H256::from_str(s) {
@@ -236,13 +260,15 @@ impl FromStr for Bytes32 {
 
 impl From<u64> for Bytes32 {
     fn from(value: u64) -> Self {
-        Bytes32(H256::from_low_u64_be(value))
+        let mut new_array: [u8; 32] = [0; 32];
+        new_array[24..].copy_from_slice(&value.to_be_bytes());
+        Self(H256(new_array))
     }
 }
 
 impl From<[u8; 32]> for Bytes32 {
     fn from(value: [u8; 32]) -> Self {
-        Bytes32(H256::from(value))
+        Bytes32(H256(value))
     }
 }
 
@@ -265,5 +291,99 @@ impl NftId {
 
     pub fn db_token_id(&self) -> BigDecimal {
         self.token_id.into()
+    }
+}
+#[derive(Debug, PartialEq)]
+pub struct BlockData {
+    /// Block Number
+    pub number: u64,
+    /// Unix timestamp as 64-bit integer
+    pub time: u64,
+}
+
+impl BlockData {
+    pub fn db_time(&self) -> NaiveDateTime {
+        NaiveDateTime::from_timestamp_opt(self.time.try_into().expect("no crazy times"), 0)
+            .expect("No crazy times plz")
+    }
+}
+
+#[derive(PartialEq, Debug)]
+pub struct ContractDetails {
+    pub name: Option<String>,
+    pub symbol: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct TxDetails {
+    pub hash: Bytes32,
+    pub from: Address,
+    pub to: Option<Address>,
+}
+
+impl From<ethers::types::TransactionReceipt> for TxDetails {
+    fn from(value: ethers::types::TransactionReceipt) -> Self {
+        TxDetails {
+            hash: Bytes32::from(value.transaction_hash),
+            from: Address::from(value.from),
+            to: value.to.map(Address::from),
+        }
+    }
+}
+
+impl From<ethers::types::Transaction> for TxDetails {
+    fn from(value: ethers::types::Transaction) -> Self {
+        TxDetails {
+            hash: Bytes32::from(value.hash),
+            from: Address::from(value.from),
+            to: value.to.map(Address::from),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn addresses() {
+        let ens_contract = Address::from_str("0x57f1887a8bf19b14fc0df6fd9b2acc9af147ea85").unwrap();
+        assert_eq!(
+            ens_contract.0.as_slice().to_vec(),
+            [
+                87, 241, 136, 122, 139, 241, 155, 20, 252, 13, 246, 253, 155, 42, 204, 154, 241,
+                71, 234, 133
+            ]
+        );
+    }
+
+    #[test]
+    fn impl_block() {
+        let block = BlockData {
+            number: 10_000_000,
+            time: 1588598533,
+        };
+        assert_eq!(
+            block.db_time(),
+            NaiveDateTime::from_str("2020-05-04T13:22:13").unwrap()
+        )
+    }
+
+    #[test]
+    fn u256_compatiblity() {
+        // One
+        assert_eq!(
+            U256::from(1),
+            U256::from(ethers::types::U256::from_dec_str("1").unwrap())
+        );
+        // Some arbitrary number
+        let num_string = "111122223333444455556666777788889999";
+        assert_eq!(
+            U256(Uint256::from_str_radix(num_string, 10).unwrap()),
+            U256::from(ethers::types::U256::from_dec_str(num_string).unwrap())
+        );
+        // Max
+        assert_eq!(U256(Uint256::MAX), U256::from(ethers::types::U256::MAX));
     }
 }

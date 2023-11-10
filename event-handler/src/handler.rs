@@ -4,8 +4,8 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use eth::{
-    rpc::{BlockData, Client as EthClient, TxDetails},
-    types::{Address, NftId},
+    rpc::Client as EthClient,
+    types::{Address, BlockData, NftId, TxDetails},
 };
 use event_retriever::db_reader::{
     diesel::{BlockRange, EventSource},
@@ -239,7 +239,7 @@ impl EventHandler {
                 }
             }
         }
-        nft.owner = transfer.to.0.as_bytes().to_vec();
+        nft.owner = transfer.to.0.as_slice().to_vec();
         nft.last_update_block = block;
         nft.last_update_log_index = log_index;
         nft.last_transfer_block = Some(block);

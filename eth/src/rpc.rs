@@ -1,6 +1,5 @@
-use crate::types::{Address, Bytes32, NftId};
+use crate::types::{Address, BlockData, NftId, TxDetails};
 use anyhow::{anyhow, Result};
-use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
 use ethers::{
     middleware::Middleware,
     prelude::abigen,
@@ -15,46 +14,11 @@ use std::{
 
 abigen!(ERC721Metadata, "./src/abis/ERC721Metadata.json");
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub struct TxDetails {
-    pub hash: Bytes32,
-    pub from: Address,
-    pub to: Option<Address>,
-}
-
-impl From<ethers::types::TransactionReceipt> for TxDetails {
-    fn from(value: ethers::types::TransactionReceipt) -> Self {
-        TxDetails {
-            hash: Bytes32(value.transaction_hash),
-            from: Address(value.from),
-            to: value.to.map(Address::from),
-        }
-    }
-}
-
-impl From<ethers::types::Transaction> for TxDetails {
-    fn from(value: ethers::types::Transaction) -> Self {
-        TxDetails {
-            hash: Bytes32(value.hash),
-            from: Address(value.from),
-            to: value.to.map(Address::from),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct BlockData {
-    /// Block Number
-    pub number: u64,
-    /// Unix timestamp as 64-bit integer
-    pub time: u64,
-}
-
-impl BlockData {
-    pub fn db_time(&self) -> NaiveDateTime {
-        NaiveDateTime::from_timestamp_opt(self.time.try_into().expect("no crazy times"), 0)
-            .expect("No crazy times plz")
-    }
+fn erc721_contract_at_address(
+    address: Address,
+    provider: Arc<Provider<Http>>,
+) -> ERC721Metadata<Provider<Http>> {
+    ERC721Metadata::new(ethers::types::Address::from(address.0 .0), provider)
 }
 
 #[async_trait::async_trait]
@@ -200,9 +164,11 @@ struct GetErc721Uri {
 #[async_trait::async_trait]
 impl RetryGet<String> for GetErc721Uri {
     async fn try_get(&self) -> Result<String> {
-        let contract = ERC721Metadata::new(self.token.address, self.provider.clone());
+        let contract = erc721_contract_at_address(self.token.address, self.provider.clone());
         contract
-            .token_uri(self.token.token_id.0)
+            .token_uri(ethers::types::U256::from_big_endian(
+                &self.token.token_id.0.to_be_bytes(),
+            ))
             .call()
             .await
             // Remove Null Bytes: Postgres can't handle them.
@@ -219,7 +185,7 @@ struct GetName {
 #[async_trait::async_trait]
 impl RetryGet<String> for GetName {
     async fn try_get(&self) -> Result<String> {
-        let contract = ERC721Metadata::new(self.address, self.provider.clone());
+        let contract = erc721_contract_at_address(self.address, self.provider.clone());
         contract
             .name()
             .call()
@@ -238,7 +204,7 @@ struct GetSymbol {
 #[async_trait::async_trait]
 impl RetryGet<String> for GetSymbol {
     async fn try_get(&self) -> Result<String> {
-        let contract = ERC721Metadata::new(self.address, self.provider.clone());
+        let contract = erc721_contract_at_address(self.address, self.provider.clone());
         contract
             .symbol()
             .call()
@@ -327,11 +293,11 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::*;
-    use crate::types::U256;
+    use crate::types::{Bytes32, U256};
+    use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
     use maplit::{hashmap, hashset};
+    use std::str::FromStr;
     use tracing_test::traced_test;
 
     static FREE_ETH_RPC: &str = "https://rpc.ankr.com/eth"; // Also supports
