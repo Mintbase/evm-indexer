@@ -300,9 +300,11 @@ impl Client {
         start: u64,
         end: u64,
     ) -> Result<HashMap<u64, HashMap<u64, TxDetails>>> {
-        let range: Vec<u64> = (start..end).collect();
+        let range = start..end;
 
-        let futures = (start..end).map(|block: u64| self.get_block_receipts(block));
+        let futures = range
+            .clone()
+            .map(|block: u64| self.get_block_receipts(block));
         let x: HashMap<u64, HashMap<u64, TxDetails>> = range
             .into_iter()
             .zip(join_all(futures).await)
