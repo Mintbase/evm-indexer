@@ -555,6 +555,7 @@ dependencies = [
  "eth",
  "event-retriever",
  "futures",
+ "scheduled-thread-pool",
  "serde_json",
  "tokio",
  "tracing",

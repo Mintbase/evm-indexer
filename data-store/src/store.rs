@@ -8,6 +8,8 @@ use diesel::{
 };
 use eth::types::{Address, BlockData, NftId, TxDetails};
 use event_retriever::db_reader::models::EventBase;
+use scheduled_thread_pool::ScheduledThreadPool;
+use std::sync::Arc;
 
 pub struct DataStore {
     client: PgConnection,
@@ -51,6 +53,7 @@ impl DataStore {
         Pool::builder()
             .max_size(50) // Should be a configurable env var
             .test_on_check_out(true)
+            .thread_pool(Arc::new(ScheduledThreadPool::new(20)))
             .build(manager)
             .context("build connection pool")
     }
