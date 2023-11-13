@@ -348,8 +348,9 @@ mod tests {
         }
     }
 
-    #[test]
-    fn erc721_approval_handler() {
+    // These tests shouldn't need to be async, but the handler struct contains async fields.
+    #[tokio::test]
+    async fn erc721_approval_handler() {
         let SetupData {
             mut handler,
             token_id: _,
@@ -396,8 +397,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn erc721_transfer_handler() {
+    #[tokio::test]
+    async fn erc721_transfer_handler() {
         let SetupData {
             mut handler,
             token_id,
