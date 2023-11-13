@@ -315,7 +315,7 @@ impl Client {
                         Ok(data) => data,
                         Err(err) => {
                             tracing::error!("Failed to get receipt for block {}: {:?}", block, err);
-                            HashMap::new()
+                            panic!("Failed to get receipt for block {}: {:?}", block, err);
                         }
                     },
                 )

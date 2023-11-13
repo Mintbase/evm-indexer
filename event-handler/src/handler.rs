@@ -76,7 +76,7 @@ impl EventHandler {
     }
 
     pub async fn load_chain_data(&mut self, range: BlockRange) -> Result<HashMap<u64, ChainData>> {
-        tracing::info!("load block and transaction data from node");
+        tracing::info!("retrieving block and transaction data from node");
         let tx_data = self
             .ethers_client
             .get_receipts_for_range(range.start as u64, range.end as u64)
@@ -88,7 +88,6 @@ impl EventHandler {
                     .into_iter()
                     .map(move |(idx, data)| Transaction::new(block, idx, data))
             }));
-        // TODO - fetch all at once with: https://github.com/Mintbase/evm-indexer/issues/57
         let block_info = self
             .eth_client
             .get_blocks_for_range(range.start as u64, range.end as u64)
@@ -104,7 +103,7 @@ impl EventHandler {
         {
             return;
         }
-        // tracing::debug!("new contract {:?}", address);
+        tracing::debug!("new contract {:?}", address);
         self.updates
             .contracts
             .insert(address, TokenContract::from_event_base(event));
@@ -179,7 +178,6 @@ impl EventHandler {
         approval: Erc721Approval,
         tx: &TxDetails,
     ) {
-        // tracing::debug!("Processing {:?} of {:?}", approval, base.contract_address);
         let nft_id = NftId {
             address: base.contract_address,
             token_id: approval.id,
@@ -189,7 +187,7 @@ impl EventHandler {
             None => match self.store.load_nft(&nft_id) {
                 Some(nft) => nft,
                 None => {
-                    // tracing::warn!("approval received before token mint {:?}", nft_id);
+                    tracing::warn!("approval received before token mint {:?}", nft_id);
                     Nft::build_from(&base, &nft_id, tx)
                 }
             },
@@ -221,7 +219,6 @@ impl EventHandler {
         transfer: Erc721Transfer,
         tx: &TxDetails,
     ) {
-        // tracing::debug!("Processing {:?} of {:?}", transfer, base.contract_address);
         let nft_id = NftId {
             address: base.contract_address,
             token_id: transfer.token_id,
@@ -300,11 +297,11 @@ mod tests {
             &std::env::var("NODE_URL").unwrap_or(TEST_ETH_RPC.to_string()),
         )
         .unwrap();
-        let block = 15_001_020;
+        let block = handler.store.get_max_block() + 1;
         assert!(handler
             .process_events_for_block_range(BlockRange {
                 start: block,
-                end: block + 100,
+                end: block + 5,
             })
             .await
             .is_ok());
@@ -351,8 +348,8 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn erc721_approval_handler() {
+    #[test]
+    fn erc721_approval_handler() {
         let SetupData {
             mut handler,
             token_id: _,
@@ -375,7 +372,7 @@ mod tests {
             approved,
             "first approval"
         );
-        base.block_number += 1; // resuse incremented base.
+        base.block_number += 1; // reuse incremented base.
         handler.handle_erc721_approval(
             base,
             Erc721Approval {
@@ -399,8 +396,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn erc721_transfer_handler() {
+    #[test]
+    fn erc721_transfer_handler() {
         let SetupData {
             mut handler,
             token_id,

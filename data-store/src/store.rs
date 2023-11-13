@@ -100,6 +100,15 @@ impl DataStore {
         }
     }
 
+    pub fn get_max_block(&mut self) -> i64 {
+        blocks::dsl::blocks
+            .select(diesel::dsl::max(blocks::number))
+            .limit(1)
+            .get_result(&mut self.client)
+            .unwrap_or(Some(0))
+            .expect("max block exists or is zero")
+    }
+
     fn upsert_nft(conn: &mut PooledConnection<ConnectionManager<PgConnection>>, nft: &Nft) {
         let result = diesel::insert_into(nfts::dsl::nfts)
             .values(nft)
@@ -197,7 +206,7 @@ impl DataStore {
         match self.load_nft(nft_id) {
             Some(nft) => nft,
             None => {
-                // tracing::debug!("new nft {:?}", nft_id);
+                tracing::debug!("new nft {:?}", nft_id);
                 Nft::build_from(base, nft_id, tx)
             }
         }
