@@ -36,14 +36,14 @@ fn handle_query_result<T>(result: QueryResult<T>) -> T {
 }
 
 impl DataStore {
+    fn establish_connection(db_url: &str) -> Result<PgConnection> {
+        PgConnection::establish(db_url).context("Error connecting to Diesel Client")
+    }
+
     pub fn new(connection: &str) -> Result<Self> {
         Ok(Self {
             client: Self::establish_connection(connection)?,
         })
-    }
-
-    fn establish_connection(db_url: &str) -> Result<PgConnection> {
-        PgConnection::establish(db_url).context("Error connecting to Diesel Client")
     }
 
     pub fn save_transactions(&mut self, txs: Vec<Transaction>) {
@@ -53,7 +53,7 @@ impl DataStore {
         tracing::info!(
             "saving {} EVM transactions over {} SQL transactions",
             txs.len(),
-            txs.len() / chunk_size
+            (txs.len() / chunk_size) + 1
         );
         for chunk in txs.chunks(chunk_size) {
             let expected_inserts = chunk.len();
@@ -71,7 +71,7 @@ impl DataStore {
         tracing::info!(
             "saving {} EVM blocks over {} SQL transactions",
             blocks.len(),
-            blocks.len() / chunk_size
+            (blocks.len() / chunk_size) + 1
         );
         for chunk in blocks.chunks(chunk_size) {
             let expected_inserts = chunk.len();
@@ -108,6 +108,7 @@ impl DataStore {
     /// that the contracts are not being updated during event handling.
     pub fn save_contracts(&mut self, contracts: Vec<TokenContract>) {
         let expected_inserts = contracts.len();
+        tracing::info!("saving {} contracts", expected_inserts);
         let result = diesel::insert_into(token_contracts::dsl::token_contracts)
             .values(contracts)
             .on_conflict(token_contracts::address)
@@ -154,18 +155,6 @@ impl DataStore {
             None => {
                 tracing::debug!("new nft {:?}", nft_id);
                 Nft::build_from(base, nft_id, tx)
-            }
-        }
-    }
-
-    pub fn load_or_initialize_contract(&mut self, base: &EventBase) -> TokenContract {
-        match self.load_contract(base.contract_address) {
-            Some(contract) => contract,
-            None => {
-                tracing::info!("new contract {:?}", base.contract_address);
-                let contract = TokenContract::from_event_base(base);
-                self.save_contract(&contract);
-                contract
             }
         }
     }
@@ -326,15 +315,5 @@ mod tests {
         assert!(store.load_contract(base.contract_address).is_none());
         store.save_contract(&contract);
         assert!(store.load_contract(base.contract_address).is_some());
-    }
-
-    #[test]
-    fn load_or_initialize_contract() {
-        let mut store = get_new_store();
-        let event = test_event_base();
-        assert_eq!(
-            store.load_or_initialize_contract(&event),
-            TokenContract::from_event_base(&event)
-        );
     }
 }

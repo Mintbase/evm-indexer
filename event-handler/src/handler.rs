@@ -1,8 +1,8 @@
-use crate::{
+use anyhow::{Context, Result};
+use data_store::{
     models::{Nft, TokenContract, Transaction},
     store::DataStore,
 };
-use anyhow::{Context, Result};
 use eth::{
     rpc::ethers::Client as EthersClient,
     rpc::ethrpc::Client as EthRpcClient,
@@ -283,9 +283,7 @@ mod tests {
     static TEST_ETH_RPC: &str = "https://rpc.ankr.com/eth";
 
     fn test_handler() -> EventHandler {
-        let mut handler = EventHandler::new(TEST_SOURCE_URL, TEST_STORE_URL, TEST_ETH_RPC).unwrap();
-        handler.store.clear_tables();
-        handler
+        EventHandler::new(TEST_SOURCE_URL, TEST_STORE_URL, TEST_ETH_RPC).unwrap()
     }
 
     #[tokio::test]
