@@ -26,7 +26,7 @@ pub struct UpdateCache {
 impl UpdateCache {
     /// This method writes its records to the provided DataStore
     /// while relieving itself of its memory.
-    pub fn write(&mut self, db: &mut DataStore) {
+    pub async fn write(&mut self, db: &mut DataStore) {
         // TODO - It would be ideal if all db actions happened in a single commit
         //  so that failure to write any one of them results in no changes at all.
         //  this can be done with @databases typescript library so it should be possible here.
@@ -42,11 +42,11 @@ impl UpdateCache {
             &mut self.contracts.drain().map(|(_, v)| v).collect(),
         ));
 
-        // drain memory into database.
-        for (_, nft) in self.nfts.drain() {
-            // TODO - Batch these updates.
-            db.save_nft(&nft);
-        }
+        // Write and clear nfts
+        db.save_nfts(std::mem::take(
+            &mut self.nfts.drain().map(|(_, v)| v).collect(),
+        ))
+        .await;
     }
 }
 
@@ -76,6 +76,7 @@ impl EventHandler {
     }
 
     pub async fn load_chain_data(&mut self, range: BlockRange) -> Result<HashMap<u64, ChainData>> {
+        tracing::info!("retrieving block and transaction data from node");
         let tx_data = self
             .ethers_client
             .get_receipts_for_range(range.start as u64, range.end as u64)
@@ -87,7 +88,6 @@ impl EventHandler {
                     .into_iter()
                     .map(move |(idx, data)| Transaction::new(block, idx, data))
             }));
-        // TODO - fetch all at once with: https://github.com/Mintbase/evm-indexer/issues/57
         let block_info = self
             .eth_client
             .get_blocks_for_range(range.start as u64, range.end as u64)
@@ -103,13 +103,14 @@ impl EventHandler {
         {
             return;
         }
-        tracing::info!("new contract {:?}", address);
+        tracing::debug!("new contract {:?}", address);
         self.updates
             .contracts
             .insert(address, TokenContract::from_event_base(event));
     }
 
     async fn get_missing_node_data(&mut self) {
+        tracing::info!("retrieving missing node data");
         let (mut missing_uris, mut contract_details) = self
             .eth_client
             .get_uris_and_contract_details(
@@ -143,6 +144,7 @@ impl EventHandler {
     }
 
     pub async fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
+        tracing::info!("processing events for {:?}", range);
         let event_map = self.source.get_events_for_block_range(range)?;
         let mut block_data = self.load_chain_data(range).await?;
         for (block, block_events) in event_map.into_iter() {
@@ -155,19 +157,19 @@ impl EventHandler {
                         EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a, tx),
                         EventMeta::Erc721Transfer(t) => self.handle_erc721_transfer(base, t, tx),
                         _ => {
-                            tracing::error!("unhandled event!");
+                            // tracing::error!("unhandled event!");
                             continue;
                         }
                     };
                 }
             }
         }
-
         // Retrieve missing data from node.
         self.get_missing_node_data().await;
 
         // Drain cache and write to store
-        self.updates.write(&mut self.store);
+        self.updates.write(&mut self.store).await;
+        tracing::info!("completed event processing for {:?}", range);
         Ok(())
     }
     fn handle_erc721_approval(
@@ -176,7 +178,6 @@ impl EventHandler {
         approval: Erc721Approval,
         tx: &TxDetails,
     ) {
-        tracing::debug!("Processing {:?} of {:?}", approval, base.contract_address);
         let nft_id = NftId {
             address: base.contract_address,
             token_id: approval.id,
@@ -218,7 +219,6 @@ impl EventHandler {
         transfer: Erc721Transfer,
         tx: &TxDetails,
     ) {
-        tracing::debug!("Processing {:?} of {:?}", transfer, base.contract_address);
         let nft_id = NftId {
             address: base.contract_address,
             token_id: transfer.token_id,
@@ -272,12 +272,12 @@ impl EventHandler {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use super::*;
     use dotenv::dotenv;
     use eth::types::{Address, Bytes32, NftId, U256};
     use event_retriever::db_reader::diesel::BlockRange;
+    use std::str::FromStr;
+    use tracing_test::traced_test;
     static TEST_SOURCE_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";
     static TEST_STORE_URL: &str = "postgresql://postgres:postgres@localhost:5432/store";
     static TEST_ETH_RPC: &str = "https://rpc.ankr.com/eth";
@@ -288,6 +288,7 @@ mod tests {
 
     #[tokio::test]
     #[ignore]
+    #[traced_test]
     async fn event_processing() {
         dotenv().ok();
         let mut handler = EventHandler::new(
@@ -296,11 +297,11 @@ mod tests {
             &std::env::var("NODE_URL").unwrap_or(TEST_ETH_RPC.to_string()),
         )
         .unwrap();
-        let block = 15_000_000;
+        let block = handler.store.get_max_block() + 1;
         assert!(handler
             .process_events_for_block_range(BlockRange {
                 start: block,
-                end: block + 5,
+                end: block + 70,
             })
             .await
             .is_ok());
@@ -347,6 +348,7 @@ mod tests {
         }
     }
 
+    // These tests shouldn't need to be async, but the handler struct contains async fields.
     #[tokio::test]
     async fn erc721_approval_handler() {
         let SetupData {
@@ -371,7 +373,7 @@ mod tests {
             approved,
             "first approval"
         );
-        base.block_number += 1; // resuse incremented base.
+        base.block_number += 1; // reuse incremented base.
         handler.handle_erc721_approval(
             base,
             Erc721Approval {

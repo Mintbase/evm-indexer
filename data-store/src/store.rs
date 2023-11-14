@@ -1,11 +1,19 @@
 use crate::{models::*, schema::*};
 use anyhow::{Context, Result};
-use diesel::{pg::PgConnection, prelude::*, Connection, RunQueryDsl};
+use diesel::{
+    pg::PgConnection,
+    prelude::*,
+    r2d2::{ConnectionManager, Pool, PooledConnection},
+    Connection, RunQueryDsl,
+};
 use eth::types::{Address, BlockData, NftId, TxDetails};
 use event_retriever::db_reader::models::EventBase;
+use scheduled_thread_pool::ScheduledThreadPool;
+use std::sync::Arc;
 
 pub struct DataStore {
     client: PgConnection,
+    pool: Pool<ConnectionManager<PgConnection>>,
 }
 
 fn handle_insert_result(result: QueryResult<usize>, expected_updates: usize, context: String) {
@@ -40,9 +48,32 @@ impl DataStore {
         PgConnection::establish(db_url).context("Error connecting to Diesel Client")
     }
 
+    fn get_connection_pool(
+        db_url: &str,
+        pool_size: u32,
+        num_threads: usize,
+    ) -> Result<Pool<ConnectionManager<PgConnection>>> {
+        let manager = ConnectionManager::<PgConnection>::new(db_url);
+        Pool::builder()
+            .max_size(pool_size) // Should be a configurable env var
+            .test_on_check_out(true)
+            .thread_pool(Arc::new(ScheduledThreadPool::new(num_threads)))
+            .build(manager)
+            .context("build connection pool")
+    }
+
     pub fn new(connection: &str) -> Result<Self> {
+        let pool_size = std::env::var("STORE_POOL_SIZE")
+            .unwrap_or("50".to_string())
+            .parse::<u32>()
+            .context("parse pool_size")?;
+        let num_threads = std::env::var("STORE_NUM_THREADS")
+            .unwrap_or("20".to_string())
+            .parse::<usize>()
+            .context("parse num_threads")?;
         Ok(Self {
             client: Self::establish_connection(connection)?,
+            pool: Self::get_connection_pool(connection, pool_size, num_threads)?,
         })
     }
 
@@ -84,6 +115,25 @@ impl DataStore {
         }
     }
 
+    pub fn get_max_block(&mut self) -> i64 {
+        blocks::dsl::blocks
+            .select(diesel::dsl::max(blocks::number))
+            .limit(1)
+            .get_result(&mut self.client)
+            .unwrap_or(Some(0))
+            .expect("max block exists or is zero")
+    }
+
+    fn upsert_nft(conn: &mut PooledConnection<ConnectionManager<PgConnection>>, nft: &Nft) {
+        let result = diesel::insert_into(nfts::dsl::nfts)
+            .values(nft)
+            .on_conflict((nfts::contract_address, nfts::token_id))
+            .do_update()
+            .set(nft)
+            .execute(conn);
+        handle_insert_result(result, 1, format!("save_nft {:?}", nft))
+    }
+
     pub fn save_nft(&mut self, nft: &Nft) {
         let result = diesel::insert_into(nfts::dsl::nfts)
             .values(nft)
@@ -92,6 +142,33 @@ impl DataStore {
             .set(nft)
             .execute(&mut self.client);
         handle_insert_result(result, 1, format!("save_nft {:?}", nft))
+    }
+
+    pub async fn save_nfts(&mut self, nft_updates: Vec<Nft>) {
+        tracing::info!("saving {} nfts", nft_updates.len());
+        let mut tasks: Vec<tokio::task::JoinHandle<()>> = vec![];
+
+        for nft in nft_updates {
+            let pool = self.pool.clone();
+            tasks.push(tokio::spawn(async move {
+                let conn: &mut PooledConnection<ConnectionManager<PgConnection>> =
+                    &mut pool.get().unwrap();
+                Self::upsert_nft(conn, &nft)
+            }))
+        }
+        let errors: Vec<tokio::task::JoinError> = futures::future::join_all(tasks)
+            .await
+            .into_iter()
+            .filter_map(|res| res.err())
+            .collect();
+
+        if !errors.is_empty() {
+            tracing::error!(
+                "failed to update {} nfts with errors {:?}",
+                errors.len(),
+                errors
+            );
+        }
     }
 
     pub fn save_contract(&mut self, contract: &TokenContract) {
@@ -270,8 +347,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn save_and_load_nft() {
+    #[tokio::test]
+    async fn save_and_load_nft() {
         let mut store = get_new_store();
         let base = test_event_base();
         let token = NftId {
@@ -284,7 +361,7 @@ mod tests {
             to: Some(Address::from(2)),
         };
         let nft = Nft::build_from(&base, &token, &tx);
-        store.save_nft(&nft);
+        store.save_nfts(vec![nft.clone()]).await;
         assert_eq!(store.load_nft(&token).unwrap(), nft);
     }
 
