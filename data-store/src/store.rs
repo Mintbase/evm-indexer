@@ -48,20 +48,32 @@ impl DataStore {
         PgConnection::establish(db_url).context("Error connecting to Diesel Client")
     }
 
-    fn get_connection_pool(db_url: &str) -> Result<Pool<ConnectionManager<PgConnection>>> {
+    fn get_connection_pool(
+        db_url: &str,
+        pool_size: u32,
+        num_threads: usize,
+    ) -> Result<Pool<ConnectionManager<PgConnection>>> {
         let manager = ConnectionManager::<PgConnection>::new(db_url);
         Pool::builder()
-            .max_size(50) // Should be a configurable env var
+            .max_size(pool_size) // Should be a configurable env var
             .test_on_check_out(true)
-            .thread_pool(Arc::new(ScheduledThreadPool::new(20)))
+            .thread_pool(Arc::new(ScheduledThreadPool::new(num_threads)))
             .build(manager)
             .context("build connection pool")
     }
 
     pub fn new(connection: &str) -> Result<Self> {
+        let pool_size = std::env::var("STORE_POOL_SIZE")
+            .unwrap_or("50".to_string())
+            .parse::<u32>()
+            .context("parse pool_size")?;
+        let num_threads = std::env::var("STORE_NUM_THREADS")
+            .unwrap_or("20".to_string())
+            .parse::<usize>()
+            .context("parse num_threads")?;
         Ok(Self {
             client: Self::establish_connection(connection)?,
-            pool: Self::get_connection_pool(connection)?,
+            pool: Self::get_connection_pool(connection, pool_size, num_threads)?,
         })
     }
 
@@ -144,9 +156,18 @@ impl DataStore {
                 Self::upsert_nft(conn, &nft)
             }))
         }
+        let errors: Vec<tokio::task::JoinError> = futures::future::join_all(tasks)
+            .await
+            .into_iter()
+            .filter_map(|res| res.err())
+            .collect();
 
-        for res in futures::future::join_all(tasks).await {
-            res.unwrap();
+        if !errors.is_empty() {
+            tracing::error!(
+                "failed to update {} nfts with errors {:?}",
+                errors.len(),
+                errors
+            );
         }
     }
 
