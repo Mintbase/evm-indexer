@@ -1,12 +1,15 @@
 use crate::types::{Address, Bytes32, U256};
 use bigdecimal::BigDecimal;
 use diesel::{self, internal::derives::multiconnection::chrono::NaiveDateTime};
-#[derive(Debug, PartialEq)]
+use std::collections::HashMap;
+
+#[derive(Debug, PartialEq, Clone, Default)]
 pub struct BlockData {
     /// Block Number
     pub number: u64,
     /// Unix timestamp as 64-bit integer
     pub time: u64,
+    pub transactions: HashMap<u64, TxDetails>,
 }
 
 impl BlockData {
@@ -34,6 +37,16 @@ pub struct TxDetails {
     pub hash: Bytes32,
     pub from: Address,
     pub to: Option<Address>,
+}
+
+impl From<ethrpc::types::SignedTransaction> for TxDetails {
+    fn from(value: ethrpc::types::SignedTransaction) -> Self {
+        TxDetails {
+            hash: Bytes32::from(value.hash()),
+            from: Address::from(value.from()),
+            to: value.to().map(Address::from),
+        }
+    }
 }
 
 impl From<ethers::types::TransactionReceipt> for TxDetails {
@@ -72,6 +85,7 @@ mod tests {
         let block = BlockData {
             number: 10_000_000,
             time: 1588598533,
+            ..Default::default()
         };
         assert_eq!(
             block.db_time(),
