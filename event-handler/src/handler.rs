@@ -308,7 +308,7 @@ mod tests {
             start: block,
             end: block + 200,
         };
-        let result = handler.process_events_for_block_range(range.clone()).await;
+        let result = handler.process_events_for_block_range(range).await;
         match result {
             Ok(_) => assert_eq!(handler.store.get_max_block(), range.end - 1),
             Err(err) => panic!("{}", err.to_string()),
