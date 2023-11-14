@@ -9,9 +9,9 @@ RUN cargo install --debug diesel_cli --no-default-features --features postgres
 WORKDIR /app
 
 # Copy the relevant files:
-COPY event-handler/src/schema.rs /app/event-handler/src/
+COPY data-store/src/schema.rs /app/data-store/src/
 COPY diesel.toml /app
-COPY event-handler/migrations/ /app/event-handler/migrations/
+COPY data-store/migrations/ /app/data-store/migrations/
 
 # Wait for postgres to be ready.
 COPY test_db/wait-for-it.sh /app

@@ -7,5 +7,5 @@ Many of our tests depend on a sample database which can be run (in the backgroun
 
 ```sh
 docker-compose up -d
-cargo test
+cargo test -- --test-threads 1 
 ```
