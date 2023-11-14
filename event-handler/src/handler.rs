@@ -50,8 +50,6 @@ impl UpdateCache {
     }
 }
 
-pub type ChainData = HashMap<u64, TxDetails>;
-
 pub struct EventHandler {
     /// Source of events for processing
     source: EventSource,
@@ -75,25 +73,29 @@ impl EventHandler {
         })
     }
 
-    pub async fn load_chain_data(&mut self, range: BlockRange) -> Result<HashMap<u64, ChainData>> {
+    pub async fn load_chain_data(&mut self, range: BlockRange) -> Result<HashMap<u64, BlockData>> {
         tracing::info!("retrieving block and transaction data from node");
-        let tx_data = self
+        let block_info: HashMap<u64, BlockData> = self
             .ethers_client
-            .get_receipts_for_range(range.start as u64, range.end as u64)
-            .await?;
-        self.updates
-            .transactions
-            .extend(tx_data.clone().into_iter().flat_map(|(block, block_data)| {
-                block_data
-                    .into_iter()
-                    .map(move |(idx, data)| Transaction::new(block, idx, data))
-            }));
-        let block_info = self
-            .eth_client
             .get_blocks_for_range(range.start as u64, range.end as u64)
             .await?;
-        self.updates.blocks.extend(block_info.into_values());
-        Ok(tx_data)
+
+        self.updates
+            .transactions
+            .extend(
+                block_info
+                    .clone()
+                    .into_iter()
+                    .flat_map(|(block, block_data)| {
+                        block_data
+                            .transactions
+                            .into_iter()
+                            .map(move |(idx, data)| Transaction::new(block, idx, data))
+                    }),
+            );
+
+        self.updates.blocks.extend(block_info.clone().into_values());
+        Ok(block_info)
     }
 
     fn check_for_contract(&mut self, event: &EventBase) {
@@ -103,13 +105,13 @@ impl EventHandler {
         {
             return;
         }
-        tracing::debug!("new contract {:?}", address);
+        // tracing::debug!("new contract {:?}", address.0);
         self.updates
             .contracts
             .insert(address, TokenContract::from_event_base(event));
     }
 
-    async fn get_missing_node_data(&mut self) {
+    async fn get_missing_node_data(&mut self) -> Result<()> {
         tracing::info!("retrieving missing node data");
         let (mut missing_uris, mut contract_details) = self
             .eth_client
@@ -141,6 +143,7 @@ impl EventHandler {
             contract.name = details.name;
             contract.symbol = details.symbol;
         }
+        Ok(())
     }
 
     pub async fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
@@ -148,7 +151,10 @@ impl EventHandler {
         let event_map = self.source.get_events_for_block_range(range)?;
         let mut block_data = self.load_chain_data(range).await?;
         for (block, block_events) in event_map.into_iter() {
-            let tx_data = block_data.remove(&block).expect("always blue");
+            let tx_data = block_data
+                .remove(&block)
+                .unwrap_or_else(|| panic!("Missing block {} in {:?}", block, range))
+                .transactions;
             for ((tidx, _lidx), tx_events) in block_events {
                 let tx = tx_data.get(&tidx).expect("receipt known to exist!");
                 for NftEvent { base, meta } in tx_events.into_iter() {
@@ -165,7 +171,7 @@ impl EventHandler {
             }
         }
         // Retrieve missing data from node.
-        self.get_missing_node_data().await;
+        self.get_missing_node_data().await?;
 
         // Drain cache and write to store
         self.updates.write(&mut self.store).await;
@@ -187,7 +193,7 @@ impl EventHandler {
             None => match self.store.load_nft(&nft_id) {
                 Some(nft) => nft,
                 None => {
-                    tracing::warn!("approval received before token mint {:?}", nft_id);
+                    // tracing::warn!("approval received before token mint {:?}", nft_id);
                     Nft::build_from(&base, &nft_id, tx)
                 }
             },
@@ -298,13 +304,15 @@ mod tests {
         )
         .unwrap();
         let block = handler.store.get_max_block() + 1;
-        assert!(handler
-            .process_events_for_block_range(BlockRange {
-                start: block,
-                end: block + 70,
-            })
-            .await
-            .is_ok());
+        let range = BlockRange {
+            start: block,
+            end: block + 200,
+        };
+        let result = handler.process_events_for_block_range(range.clone()).await;
+        match result {
+            Ok(_) => assert_eq!(handler.store.get_max_block(), range.end - 1),
+            Err(err) => panic!("{}", err.to_string()),
+        }
         // TODO - construct a sequence of events and actually check the Store State is as expected here.
     }
 

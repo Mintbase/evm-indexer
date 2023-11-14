@@ -1,5 +1,5 @@
 use crate::types::{Address, BlockData, ContractDetails, NftId, TxDetails};
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Error, Result};
 use async_trait::async_trait;
 use ethers::{
     middleware::Middleware,
@@ -8,7 +8,7 @@ use ethers::{
     utils::hex,
 };
 use futures::future::{join, join_all};
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{collections::HashMap, fmt::Debug, sync::Arc, time::Duration};
 
 use super::EthNodeReading;
 
@@ -71,15 +71,28 @@ struct GetBlock {
 #[async_trait::async_trait]
 impl RetryGet<Option<BlockData>> for GetBlock {
     async fn try_get(&self) -> Result<Option<BlockData>> {
-        let res: Option<ethers::types::Block<ethers::types::H256>> =
-            self.provider.get_block(self.block).await?;
+        let res: Option<ethers::types::Block<ethers::types::Transaction>> =
+            self.provider.get_block_with_txs(self.block).await?;
 
         Ok(match res {
-            Some(ethers_block) => Some(BlockData {
-                // Could also use client_response for this, but its optional.
-                number: self.block,
-                time: ethers_block.timestamp.as_u64(),
-            }),
+            Some(ethers_block) => {
+                let transactions = ethers_block
+                    .transactions
+                    .into_iter()
+                    .map(|tx| {
+                        (
+                            tx.transaction_index.expect("should exist").as_u64(),
+                            TxDetails::from(tx),
+                        )
+                    })
+                    .collect();
+                Some(BlockData {
+                    // Could also use client_response for this, but its optional.
+                    number: self.block,
+                    time: ethers_block.timestamp.as_u64(),
+                    transactions,
+                })
+            }
             None => None,
         })
     }
@@ -218,18 +231,21 @@ impl EthNodeReading for Client {
     async fn get_blocks_for_range(&self, start: u64, end: u64) -> Result<HashMap<u64, BlockData>> {
         let futures = (start..end).map(|block: u64| self.get_block(block));
 
-        let blocks = join_all(futures).await;
+        let (possible_blocks, errors) = Self::unpack_results(join_all(futures).await);
+        if !errors.is_empty() {
+            return Err(anyhow!(
+                "failed to retrieve {} blocks {:?}",
+                errors.len(),
+                errors
+            ));
+        }
 
-        let result = blocks
+        Ok(possible_blocks
             .into_iter()
             .filter_map(|possible_block| {
-                possible_block
-                    .ok()?
-                    .map(|block_data| (block_data.number, block_data))
+                possible_block.map(|block_data| (block_data.number, block_data))
             })
-            .collect();
-
-        Ok(result)
+            .collect())
     }
 }
 
@@ -238,6 +254,13 @@ impl Client {
         Ok(Self {
             provider: Arc::new(Provider::<Http>::try_from(url)?),
         })
+    }
+
+    fn unpack_results<T: Debug>(results: Vec<Result<T, Error>>) -> (Vec<T>, Vec<Error>) {
+        let (oks, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
+        let oks: Vec<_> = oks.into_iter().map(Result::unwrap).collect();
+        let errors: Vec<Error> = errors.into_iter().map(Result::unwrap_err).collect();
+        (oks, errors)
     }
 
     pub async fn get_block(&self, block: u64) -> Result<Option<BlockData>> {
@@ -365,17 +388,14 @@ mod tests {
 
         // Some
         let number = 10_000_000;
-        let block = eth_client.get_block(number).await.unwrap();
-        assert_eq!(
-            block,
-            Some(BlockData {
-                number,
-                time: 1588598533
-            })
-        );
+        // Second unwrap asserts block.is_some()!
+        let block = eth_client.get_block(number).await.unwrap().unwrap();
+        assert_eq!(block.time, 1588598533);
+        assert_eq!(block.number, number);
+        assert_eq!(block.transactions.len(), 103);
         // Check that: https://etherscan.io/block/10000000
         assert_eq!(
-            block.unwrap().db_time(),
+            block.db_time(),
             NaiveDateTime::from_str("2020-05-04T13:22:13").unwrap()
         );
 

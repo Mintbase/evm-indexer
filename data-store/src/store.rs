@@ -325,19 +325,19 @@ mod tests {
         let blocks = vec![
             BlockData {
                 number: 1,
-                time: 123456789,
+                ..Default::default()
             },
             BlockData {
                 number: 2,
-                time: 234567891,
+                ..Default::default()
             },
             BlockData {
                 number: 3,
-                time: 345678912,
+                ..Default::default()
             },
             BlockData {
                 number: 3,
-                time: 345678912,
+                ..Default::default()
             },
         ];
         store.save_blocks(blocks);
