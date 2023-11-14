@@ -1,4 +1,4 @@
-FROM rust:latest
+FROM bh2smith/rust-diesel-pg:latest
 
 RUN apt-get update && apt-get install -y libpq-dev
 
