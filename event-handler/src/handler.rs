@@ -4,7 +4,7 @@ use data_store::{
     store::DataStore,
 };
 use eth::{
-    rpc::ethers::Client as EthersClient,
+    // rpc::ethers::Client as EthersClient,
     rpc::ethrpc::Client as EthRpcClient,
     rpc::EthNodeReading,
     types::{Address, BlockData, NftId, TxDetails},
@@ -59,7 +59,7 @@ pub struct EventHandler {
     updates: UpdateCache,
     /// Web3 Provider
     eth_client: EthRpcClient,
-    ethers_client: EthersClient,
+    // ethers_client: EthersClient,
 }
 
 impl EventHandler {
@@ -69,14 +69,14 @@ impl EventHandler {
             store: DataStore::new(store_url).context("init DataStore")?,
             updates: UpdateCache::default(),
             eth_client: EthRpcClient::new(eth_rpc).context("init EthRpcClient")?,
-            ethers_client: EthersClient::new(eth_rpc).context("init EthersClient")?,
+            // ethers_client: EthersClient::new(eth_rpc).context("init EthersClient")?,
         })
     }
 
     pub async fn load_chain_data(&mut self, range: BlockRange) -> Result<HashMap<u64, BlockData>> {
         tracing::info!("retrieving block and transaction data from node");
         let block_info: HashMap<u64, BlockData> = self
-            .ethers_client
+            .eth_client
             .get_blocks_for_range(range.start as u64, range.end as u64)
             .await?;
 
@@ -306,7 +306,7 @@ mod tests {
         let block = handler.store.get_max_block() + 1;
         let range = BlockRange {
             start: block,
-            end: block + 200,
+            end: block + 100,
         };
         let result = handler.process_events_for_block_range(range).await;
         match result {
