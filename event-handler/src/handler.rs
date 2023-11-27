@@ -209,6 +209,7 @@ impl EventHandler {
             Some(approval.approved.into())
         };
         nft.last_update_block = base.block_number as i64;
+        nft.last_update_tx = base.transaction_index as i64;
         nft.last_update_log_index = base.log_index as i64;
         self.updates.nfts.insert(nft_id, nft);
     }
@@ -260,6 +261,7 @@ impl EventHandler {
         }
         nft.owner = transfer.to.0.as_slice().to_vec();
         nft.last_update_block = block;
+        nft.last_update_tx = tx_index;
         nft.last_update_log_index = log_index;
         nft.last_transfer_block = Some(block);
         nft.last_transfer_tx = Some(tx_index);
@@ -418,8 +420,9 @@ mod tests {
                 token_id: token_id.into(),
                 token_uri: None,
                 owner: to.into(),
-                last_update_block: 1,
-                last_update_log_index: 2,
+                last_update_block: base.block_number as i64,
+                last_update_tx: base.transaction_index as i64,
+                last_update_log_index: base.log_index as i64,
                 last_transfer_block: Some(base.block_number as i64),
                 last_transfer_tx: Some(base.transaction_index as i64),
                 mint_block: base.block_number as i64,
@@ -456,8 +459,9 @@ mod tests {
                 token_id: token_id.into(),
                 token_uri: None,
                 owner: from.into(),
-                last_update_block: 4,
-                last_update_log_index: 5,
+                last_update_block: base_2.block_number as i64,
+                last_update_tx: base_2.transaction_index as i64,
+                last_update_log_index: base_2.log_index as i64,
                 last_transfer_block: Some(base_2.block_number as i64),
                 last_transfer_tx: Some(base_2.transaction_index as i64),
                 mint_block: base.block_number as i64,
@@ -494,8 +498,9 @@ mod tests {
                 token_id: token_id.into(),
                 token_uri: None,
                 owner: [0u8; 20].to_vec(),
-                last_update_block: 7,
-                last_update_log_index: 8,
+                last_update_block: base_3.block_number as i64,
+                last_update_tx: base_3.transaction_index as i64,
+                last_update_log_index: base_3.log_index as i64,
                 last_transfer_block: Some(base_3.block_number as i64),
                 last_transfer_tx: Some(base_3.transaction_index as i64),
                 mint_block: base.block_number as i64,
