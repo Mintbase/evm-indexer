@@ -38,6 +38,7 @@ CREATE TABLE nfts
     token_uri             text,
     owner                 bytea          not null,
     last_update_block     int8           not null,
+    last_update_tx        int8           not null,
     last_update_log_index int8           not null,
     last_transfer_block   int8,
     last_transfer_tx      int8,

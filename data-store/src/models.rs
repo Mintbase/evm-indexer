@@ -24,7 +24,7 @@ pub(crate) struct ContractAbi {
     abi: Option<Value>,
 }
 
-#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone, Default)]
 #[diesel(table_name = nfts)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Nft {
@@ -33,6 +33,7 @@ pub struct Nft {
     pub token_uri: Option<String>,
     pub owner: Vec<u8>,
     pub last_update_block: i64,
+    pub last_update_tx: i64,
     pub last_update_log_index: i64,
     pub last_transfer_block: Option<i64>,
     pub last_transfer_tx: Option<i64>,
@@ -51,23 +52,13 @@ impl Nft {
         Self {
             contract_address: nft_id.address.into(),
             token_id: nft_id.token_id.into(),
-            token_uri: None,
-            owner: vec![],
-            last_update_block: 0,
-            last_update_log_index: 0,
-            last_transfer_block: None,
-            last_transfer_tx: None,
-            // Maybe its best if we set this when transfer comes from Zero.
             mint_block: base.block_number.try_into().expect("i64 block_number"),
             mint_tx: base
                 .transaction_index
                 .try_into()
                 .expect("i64 transaction_index"),
-            burn_block: None,
-            burn_tx: None,
             minter: tx.from.into(),
-            approved: None,
-            json: None,
+            ..Default::default()
         }
     }
 
@@ -197,20 +188,10 @@ mod tests {
             Nft {
                 contract_address: nft_id.address.into(),
                 token_id: nft_id.token_id.into(),
-                token_uri: None,
-                owner: vec![],
-                last_update_block: 0,
-                last_update_log_index: 0,
-                last_transfer_block: None,
-                last_transfer_tx: None,
-                // Maybe its best if we set this when transfer comes from Zero.
                 mint_block: base.block_number.try_into().unwrap(),
                 mint_tx: base.transaction_index.try_into().unwrap(),
-                burn_block: None,
-                burn_tx: None,
                 minter: from.into(),
-                approved: None,
-                json: None,
+                ..Default::default()
             }
         );
 
