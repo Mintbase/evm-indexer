@@ -115,6 +115,7 @@ impl EventHandler {
             .get_uris_and_contract_details(
                 self.updates
                     .nfts
+                    .clone()
                     .into_iter()
                     // Without additional specification here this will retry to fetch things
                     // We can prevent this by perhaps by filtering also for range.start < mint_block

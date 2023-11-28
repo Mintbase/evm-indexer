@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 
 #[async_trait]
-pub trait EthNodeReading {
+pub trait EthNodeReading: Send + Sync {
     async fn get_contract_details(
         &self,
         addresses: Vec<Address>,
