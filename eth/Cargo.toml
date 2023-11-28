@@ -15,7 +15,11 @@ futures = "0.3.29"
 tokio = { version = "1.33.0", features = ["macros"] }
 tracing = "0.1.37"
 async-trait = "0.1.74"
-ethrpc = { version = "0.0.8", features = ["http"] }
+# Waiting on https://github.com/nlordell/ethrpc-rs/pull/9
+# ethrpc = { version = "0.0.8", features = ["http"] }
+ethrpc = { git = "https://github.com/bh2smith/ethrpc-rs", rev = "04ba07064fcb9ac8cf71e02d2c168819499b3616", features = [
+    "http",
+] }
 solabi = "0.2.0"
 
 [dev-dependencies]

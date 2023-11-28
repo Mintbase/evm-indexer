@@ -1,11 +1,15 @@
-use crate::types::{Address, BlockData, ContractDetails, NftId};
-use anyhow::Result;
+use crate::types::{Address, BlockData, ContractDetails, NftId, TxDetails};
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use ethrpc;
-use ethrpc::{eth, http::reqwest::Url, types::TransactionCall, types::*};
+use ethrpc::{
+    eth,
+    http::{reqwest::Url, Error},
+    types::TransactionCall,
+    types::*,
+};
 use futures::future::{join, join_all};
 use solabi::{decode::Decode, encode::Encode, selector, FunctionEncoder};
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Debug};
 
 use super::EthNodeReading;
 
@@ -23,56 +27,68 @@ impl EthNodeReading for Client {
         let futures = (start..end).map(|block: u64| {
             self.provider.call(
                 eth::GetBlockByNumber,
-                (BlockSpec::Number(U256::from(block)), Hydrated::No),
+                (BlockSpec::Number(U256::from(block)), Hydrated::Yes),
             )
         });
 
-        let blocks = join_all(futures).await;
+        let (possible_blocks, errors) = Self::unpack_results(join_all(futures).await);
+        if !errors.is_empty() {
+            return Err(anyhow!(
+                "failed to retrieve {} blocks {:?}",
+                errors.len(),
+                errors
+            ));
+        }
 
-        let result = blocks
+        Ok(possible_blocks
             .into_iter()
-            .filter_map(|possible_block| match possible_block.ok()? {
-                Some(block) => {
-                    let number = block.number.as_u64();
-                    Some((
+            .flatten()
+            .map(|block| {
+                let number = block.number.as_u64();
+                let transactions = match block.transactions {
+                    BlockTransactions::Full(txs) => txs,
+                    BlockTransactions::Hash(hashes) => match hashes.len() {
+                        // This happens when a block has no transactions
+                        0 => vec![],
+                        _ => unreachable!("expected Full for Hydrated block={}", number),
+                    },
+                };
+                (
+                    number,
+                    BlockData {
                         number,
-                        BlockData {
-                            number,
-                            time: block.timestamp.as_u64(),
-                        },
-                    ))
-                }
-                // Note that Blocks are only None when they don't exist, this rpc is existing data.
-                None => None,
+                        time: block.timestamp.as_u64(),
+                        transactions: transactions
+                            .into_iter()
+                            .map(|tx| (tx.transaction_index().as_u64(), TxDetails::from(tx)))
+                            .collect(),
+                    },
+                )
             })
-            .collect();
-
-        Ok(result)
+            .collect())
     }
 
-    async fn get_uris(&self, token_ids: Vec<&NftId>) -> HashMap<NftId, Option<String>> {
+    async fn get_uris(&self, token_ids: Vec<NftId>) -> HashMap<NftId, Option<String>> {
         tracing::info!("Preparing {} tokenUri Requests", token_ids.len());
-        let futures = token_ids.iter().cloned().map(|token| {
+        let futures = token_ids.clone().into_iter().map(|token| {
             self.provider
                 .call(eth::Call, (Self::uri_call(token), BlockId::default()))
         });
 
-        let uris = join_all(futures).await;
+        let uri_results = join_all(futures).await;
 
         token_ids
             .into_iter()
-            .zip(uris)
+            .zip(uri_results)
             .map(|(id, uri_result)| {
-                (
-                    *id,
-                    match Self::decode_function_result_string(&uri_result, TOKEN_URI) {
-                        Ok(val) => val,
-                        Err(err) => {
-                            tracing::warn!("failed to decode token_uri for {:?}: {:?}", id, err);
-                            None
-                        }
-                    },
-                )
+                let uri = match uri_result {
+                    Ok(bytes) => Self::decode_function_result_string(bytes, TOKEN_URI),
+                    Err(err) => {
+                        tracing::warn!("request outcome failed for {:?} with {:?}", id, err);
+                        None
+                    }
+                };
+                (id, uri)
             })
             .collect()
     }
@@ -94,21 +110,22 @@ impl EthNodeReading for Client {
 
         let (names, symbols) = join(join_all(name_futures), join_all(symbol_futures)).await;
         tracing::debug!("Complete {} Contract Details Requests", addresses.len());
+
         addresses
             .into_iter()
-            .zip(names.iter().zip(symbols))
+            .zip(names.into_iter().zip(symbols))
             .map(|(address, (name_result, symbol_result))| {
-                let name = match Self::decode_function_result_string(name_result, NAME) {
-                    Ok(val) => val,
+                let name = match name_result {
+                    Ok(name) => Self::decode_function_result_string(name, NAME),
                     Err(err) => {
-                        tracing::warn!("failed to decode name for {:?}: {:?}", address, err);
+                        tracing::warn!("name request failed for {:?} with {}", address.0, err);
                         None
                     }
                 };
-                let symbol = match Self::decode_function_result_string(&symbol_result, SYMBOL) {
-                    Ok(val) => val,
+                let symbol = match symbol_result {
+                    Ok(symbol) => Self::decode_function_result_string(symbol, SYMBOL),
                     Err(err) => {
-                        tracing::warn!("failed to decode symbol for {:?}: {:?}", address, err);
+                        tracing::warn!("symbol request failed for {:?} with {}", address.0, err);
                         None
                     }
                 };
@@ -125,7 +142,14 @@ impl Client {
         })
     }
 
-    fn uri_call(token: &NftId) -> TransactionCall {
+    fn unpack_results<T: Debug>(results: Vec<Result<T, Error>>) -> (Vec<T>, Vec<Error>) {
+        let (oks, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
+        let oks: Vec<_> = oks.into_iter().map(Result::unwrap).collect();
+        let errors: Vec<ethrpc::http::Error> = errors.into_iter().map(Result::unwrap_err).collect();
+        (oks, errors)
+    }
+
+    fn uri_call(token: NftId) -> TransactionCall {
         TransactionCall {
             to: Some(token.address.0),
             input: Some(TOKEN_URI.encode_params(&(token.token_id.0,))),
@@ -150,35 +174,20 @@ impl Client {
     }
 
     fn decode_function_result_string<T>(
-        res: &Result<Vec<u8>, ethrpc::http::Error>,
+        res: Vec<u8>,
         encoder: FunctionEncoder<T, (String,)>,
-    ) -> Result<Option<String>>
+    ) -> Option<String>
     where
         T: Encode + Decode,
     {
-        Ok(match res {
-            Ok(bytes) => Some(encoder.decode_returns(bytes)?.0.replace('\0', "")),
+        match encoder.decode_returns(&res) {
+            Ok(decoded_string) => Some(decoded_string.0.replace('\0', "")),
             Err(err) => {
-                tracing::warn!("got {:?}", err.to_string());
+                tracing::warn!("failed to decode bytes {:?} with {}", res, err);
                 None
             }
-        })
+        }
     }
-
-    // pub async fn get_block_receipts(
-    //     &self,
-    //     block: u64,
-    //     indices: HashSet<u64>,
-    // ) -> Result<HashMap<u64, TxDetails>> {
-    //     unimplemented!()
-    //     // GetBlockReceipts {
-    //     //     provider: self.provider.clone(),
-    //     //     block,
-    //     //     indices,
-    //     // }
-    //     // .retry_get(3, 1)
-    //     // .await
-    // }
 }
 
 #[cfg(test)]
@@ -292,7 +301,7 @@ mod tests {
         };
         let token_ids = [ens_token, bored_ape, mla_field_agent, null_bytes];
 
-        let uris = eth_client.get_uris(token_ids.iter().collect()).await;
+        let uris = eth_client.get_uris(token_ids.into_iter().collect()).await;
 
         assert_eq!(
             uris,
