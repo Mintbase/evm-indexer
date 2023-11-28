@@ -110,7 +110,6 @@ impl EventHandler {
     }
 
     async fn get_missing_node_data(&mut self) -> Result<()> {
-        tracing::info!("retrieving missing node data");
         let (mut missing_uris, mut contract_details) = self
             .eth_client
             .get_uris_and_contract_details(
@@ -126,7 +125,11 @@ impl EventHandler {
                 self.updates.contracts.keys().copied().collect(),
             )
             .await;
-
+        tracing::info!(
+            "retrieving missing node data for {} contracts and {} tokens",
+            contract_details.len(),
+            missing_uris.len()
+        );
         for (id, possible_uri) in missing_uris.drain() {
             if let Some(uri) = possible_uri {
                 self.updates.nfts.get_mut(&id).expect("known").token_uri = Some(uri);
