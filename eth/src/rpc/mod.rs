@@ -1,3 +1,4 @@
+pub mod dune;
 pub mod ethers;
 pub mod ethrpc;
 use crate::types::{Address, BlockData, ContractDetails, NftId};
