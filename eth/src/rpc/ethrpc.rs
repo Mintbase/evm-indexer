@@ -48,11 +48,8 @@ impl EthNodeReading for Client {
                 let transactions = match block.transactions {
                     BlockTransactions::Full(txs) => txs,
                     BlockTransactions::Hash(hashes) => match hashes.len() {
-                        0 => {
-                            tracing::warn!("block with no transactions {}", number);
-                            // This happens when a block has no transactions
-                            vec![]
-                        }
+                        // This happens when a block has no transactions
+                        0 => vec![],
                         _ => unreachable!("expected Full for Hydrated block={}", number),
                     },
                 };
@@ -71,9 +68,9 @@ impl EthNodeReading for Client {
             .collect())
     }
 
-    async fn get_uris(&self, token_ids: Vec<&NftId>) -> HashMap<NftId, Option<String>> {
+    async fn get_uris(&self, token_ids: Vec<NftId>) -> HashMap<NftId, Option<String>> {
         tracing::info!("Preparing {} tokenUri Requests", token_ids.len());
-        let futures = token_ids.iter().cloned().map(|token| {
+        let futures = token_ids.clone().into_iter().map(|token| {
             self.provider
                 .call(eth::Call, (Self::uri_call(token), BlockId::default()))
         });
@@ -91,7 +88,7 @@ impl EthNodeReading for Client {
                         None
                     }
                 };
-                (*id, uri)
+                (id, uri)
             })
             .collect()
     }
@@ -152,7 +149,7 @@ impl Client {
         (oks, errors)
     }
 
-    fn uri_call(token: &NftId) -> TransactionCall {
+    fn uri_call(token: NftId) -> TransactionCall {
         TransactionCall {
             to: Some(token.address.0),
             input: Some(TOKEN_URI.encode_params(&(token.token_id.0,))),
@@ -304,7 +301,7 @@ mod tests {
         };
         let token_ids = [ens_token, bored_ape, mla_field_agent, null_bytes];
 
-        let uris = eth_client.get_uris(token_ids.iter().collect()).await;
+        let uris = eth_client.get_uris(token_ids.into_iter().collect()).await;
 
         assert_eq!(
             uris,

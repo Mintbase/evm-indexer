@@ -4,7 +4,6 @@ use data_store::{
     store::DataStore,
 };
 use eth::{
-    // rpc::ethers::Client as EthersClient,
     rpc::ethrpc::Client as EthRpcClient,
     rpc::EthNodeReading,
     types::{Address, BlockData, NftId, TxDetails},
@@ -13,7 +12,7 @@ use event_retriever::db_reader::{
     diesel::{BlockRange, EventSource},
     models::*,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 #[derive(Default, Debug, PartialEq)]
 pub struct UpdateCache {
@@ -58,8 +57,7 @@ pub struct EventHandler {
     /// A memory store updates.
     updates: UpdateCache,
     /// Web3 Provider
-    eth_client: EthRpcClient,
-    // ethers_client: EthersClient,
+    eth_client: Arc<dyn EthNodeReading>,
 }
 
 impl EventHandler {
@@ -68,8 +66,7 @@ impl EventHandler {
             source: EventSource::new(source_url).context("init EventSource")?,
             store: DataStore::new(store_url).context("init DataStore")?,
             updates: UpdateCache::default(),
-            eth_client: EthRpcClient::new(eth_rpc).context("init EthRpcClient")?,
-            // ethers_client: EthersClient::new(eth_rpc).context("init EthersClient")?,
+            eth_client: Arc::new(EthRpcClient::new(eth_rpc).context("init EthRpcClient")?),
         })
     }
 
@@ -118,7 +115,7 @@ impl EventHandler {
             .get_uris_and_contract_details(
                 self.updates
                     .nfts
-                    .iter()
+                    .into_iter()
                     // Without additional specification here this will retry to fetch things
                     // We can prevent this by perhaps by filtering also for range.start < mint_block
                     .filter(|(_, token)| token.token_uri.is_none())

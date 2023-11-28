@@ -201,12 +201,12 @@ impl EthNodeReading for Client {
             .collect()
     }
 
-    async fn get_uris(&self, token_ids: Vec<&NftId>) -> HashMap<NftId, Option<String>> {
+    async fn get_uris(&self, token_ids: Vec<NftId>) -> HashMap<NftId, Option<String>> {
         tracing::info!("Preparing {} tokenUri Requests", token_ids.len());
         let futures = token_ids
             .iter()
             .cloned()
-            .map(|token| self.get_erc721_uri(*token));
+            .map(|token| self.get_erc721_uri(token));
 
         let uris = join_all(futures).await;
 
@@ -215,7 +215,7 @@ impl EthNodeReading for Client {
             .zip(uris)
             .map(|(id, uri_result)| {
                 (
-                    *id,
+                    id,
                     match uri_result {
                         Ok(val) => Some(val),
                         Err(err) => {
