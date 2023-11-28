@@ -71,12 +71,13 @@ impl EventHandler {
     }
 
     pub async fn load_chain_data(&mut self, range: BlockRange) -> Result<HashMap<u64, BlockData>> {
-        tracing::info!("retrieving block and transaction data from node");
-        let block_info: HashMap<u64, BlockData> = self
-            .eth_client
-            .get_blocks_for_range(range.start as u64, range.end as u64)
-            .await?;
-
+        // tracing::info!("retrieving block and transaction data from node");
+        // let block_info: HashMap<u64, BlockData> = self
+        //     .eth_client
+        //     .get_blocks_for_range(range.start as u64, range.end as u64)
+        //     .await?;
+        tracing::info!("retrieving block and transaction data from arak");
+        let block_info = self.source.get_blocks_for_range(range)?;
         self.updates
             .transactions
             .extend(
@@ -303,7 +304,7 @@ mod tests {
             &std::env::var("NODE_URL").unwrap_or(TEST_ETH_RPC.to_string()),
         )
         .unwrap();
-        let block = handler.store.get_max_block() + 1;
+        let block = std::cmp::max(handler.store.get_max_block() + 1, 15_000_000);
         let range = BlockRange {
             start: block,
             end: block + 100,

@@ -21,6 +21,23 @@ diesel::table! {
 }
 
 diesel::table! {
+    transactions (block_number, index) {
+        block_number -> Int8,
+        index -> Int8,
+        hash -> Bytea,
+        from -> Bytea,
+        to -> Nullable<Bytea>,
+    }
+}
+
+diesel::table! {
+    blocks (number) {
+        number -> Int8,
+        time -> Timestamp,
+    }
+}
+
+diesel::table! {
     erc1155_transfer_batch (block_number, log_index) {
         block_number -> Int8,
         log_index -> Int8,

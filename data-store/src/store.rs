@@ -121,7 +121,7 @@ impl DataStore {
             .limit(1)
             .get_result(&mut self.client)
             .unwrap_or(Some(0))
-            .expect("max block exists or is zero")
+            .unwrap_or(0)
     }
 
     fn upsert_nft(conn: &mut PooledConnection<ConnectionManager<PgConnection>>, nft: &Nft) {

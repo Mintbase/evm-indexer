@@ -14,7 +14,10 @@ use crate::db_reader::{
 };
 use anyhow::{Context, Result};
 use diesel::{pg::PgConnection, prelude::*, sql_query, sql_types::BigInt, Connection, RunQueryDsl};
-use std::collections::btree_map::BTreeMap;
+use eth::types::{Address, BlockData, TxDetails};
+use std::collections::{btree_map::BTreeMap, HashMap};
+
+use super::models::db::{Block, Transaction};
 
 #[derive(Clone, Copy, Debug)]
 pub struct BlockRange {
@@ -41,6 +44,53 @@ impl EventSource {
 
     fn establish_connection(db_url: &str) -> Result<PgConnection> {
         PgConnection::establish(db_url).context("Error connecting to Diesel Client")
+    }
+
+    pub fn get_blocks_for_range(&mut self, range: BlockRange) -> Result<HashMap<u64, BlockData>> {
+        let blocks: Vec<Block> = schema::blocks::dsl::blocks
+            .filter(schema::blocks::dsl::number.ge(&range.start))
+            .filter(schema::blocks::dsl::number.lt(&range.end))
+            .load(&mut self.client)?;
+
+        let transactions: Vec<Transaction> = schema::transactions::dsl::transactions
+            .filter(schema::transactions::dsl::block_number.ge(&range.start))
+            .filter(schema::transactions::dsl::block_number.lt(&range.end))
+            .load(&mut self.client)?;
+        let mut tx_map: HashMap<i64, _> = HashMap::new();
+        for tx in transactions {
+            tx_map
+                .entry(tx.block_number)
+                .or_insert(HashMap::new())
+                .insert(
+                    tx.index as u64,
+                    TxDetails {
+                        hash: tx.hash,
+                        from: tx.from,
+                        to: tx
+                            .to
+                            .map(|address| Address::try_from(address).expect("parse Address")),
+                    },
+                );
+        }
+        //    let tx_map: HashMap<_, _>  = transactions.into_iter().map(|tx| (tx.block_number, tx)).collect();
+
+        Ok(blocks
+            .into_iter()
+            .map(|block| {
+                (
+                    block.number as u64,
+                    BlockData {
+                        number: block.number as u64,
+                        time: block.number as u64,
+                        transactions: tx_map.remove(&block.number).unwrap_or_default(),
+                    },
+                )
+            })
+            .collect())
+        // Ok(events.into_iter().map(|t| NftEvent {
+        //     base: t.event_base(),
+        //     meta: EventMeta::ApprovalForAll(t.into()),
+        // }))
     }
 
     pub fn get_events_for_block(&mut self, block: i64) -> Result<BlockEvents> {
