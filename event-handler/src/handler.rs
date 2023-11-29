@@ -49,6 +49,17 @@ impl UpdateCache {
     }
 }
 
+/// Where chain data should be retrieved from
+pub enum ChainDataSource {
+    Database,
+    Node,
+}
+
+pub struct HandlerConfig {
+    /// Source of chain data (blocks & transactions)
+    chain_data_source: ChainDataSource,
+}
+
 pub struct EventHandler {
     /// Source of events for processing
     source: EventSource,
@@ -58,26 +69,39 @@ pub struct EventHandler {
     updates: UpdateCache,
     /// Web3 Provider
     eth_client: Arc<dyn EthNodeReading>,
+    /// Runtime configuration parameters
+    config: HandlerConfig,
 }
 
 impl EventHandler {
-    pub fn new(source_url: &str, store_url: &str, eth_rpc: &str) -> Result<Self> {
+    pub fn new(
+        source_url: &str,
+        store_url: &str,
+        eth_rpc: &str,
+        config: HandlerConfig,
+    ) -> Result<Self> {
         Ok(Self {
             source: EventSource::new(source_url).context("init EventSource")?,
             store: DataStore::new(store_url).context("init DataStore")?,
             updates: UpdateCache::default(),
             eth_client: Arc::new(EthRpcClient::new(eth_rpc).context("init EthRpcClient")?),
+            config,
         })
     }
 
     pub async fn load_chain_data(&mut self, range: BlockRange) -> Result<HashMap<u64, BlockData>> {
-        // tracing::info!("retrieving block and transaction data from node");
-        // let block_info: HashMap<u64, BlockData> = self
-        //     .eth_client
-        //     .get_blocks_for_range(range.start as u64, range.end as u64)
-        //     .await?;
-        tracing::info!("retrieving block and transaction data from arak");
-        let block_info = self.source.get_blocks_for_range(range)?;
+        let block_info = match self.config.chain_data_source {
+            ChainDataSource::Database => {
+                tracing::info!("retrieving block and transaction data from arak");
+                self.source.get_blocks_for_range(range)?
+            }
+            ChainDataSource::Node => {
+                tracing::info!("retrieving block and transaction data from node");
+                self.eth_client
+                    .get_blocks_for_range(range.start as u64, range.end as u64)
+                    .await?
+            }
+        };
         self.updates
             .transactions
             .extend(
@@ -283,7 +307,6 @@ impl EventHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dotenv::dotenv;
     use eth::types::{Address, Bytes32, NftId, U256};
     use event_retriever::db_reader::diesel::BlockRange;
     use std::str::FromStr;
@@ -293,20 +316,22 @@ mod tests {
     static TEST_ETH_RPC: &str = "https://rpc.ankr.com/eth";
 
     fn test_handler() -> EventHandler {
-        EventHandler::new(TEST_SOURCE_URL, TEST_STORE_URL, TEST_ETH_RPC).unwrap()
+        EventHandler::new(
+            TEST_SOURCE_URL,
+            TEST_STORE_URL,
+            TEST_ETH_RPC,
+            HandlerConfig {
+                chain_data_source: ChainDataSource::Database,
+            },
+        )
+        .unwrap()
     }
 
     #[tokio::test]
     #[ignore]
     #[traced_test]
     async fn event_processing() {
-        dotenv().ok();
-        let mut handler = EventHandler::new(
-            TEST_SOURCE_URL,
-            TEST_STORE_URL,
-            &std::env::var("NODE_URL").unwrap_or(TEST_ETH_RPC.to_string()),
-        )
-        .unwrap();
+        let mut handler = test_handler();
         let block = std::cmp::max(handler.store.get_max_block() + 1, 15_000_000);
         let range = BlockRange {
             start: block,

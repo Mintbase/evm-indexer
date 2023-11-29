@@ -51,11 +51,11 @@ impl EventSource {
             .filter(schema::blocks::dsl::number.ge(&range.start))
             .filter(schema::blocks::dsl::number.lt(&range.end))
             .load(&mut self.client)?;
-
         let transactions: Vec<Transaction> = schema::transactions::dsl::transactions
             .filter(schema::transactions::dsl::block_number.ge(&range.start))
             .filter(schema::transactions::dsl::block_number.lt(&range.end))
             .load(&mut self.client)?;
+
         let mut tx_map: HashMap<i64, _> = HashMap::new();
         for tx in transactions {
             tx_map
@@ -72,8 +72,6 @@ impl EventSource {
                     },
                 );
         }
-        //    let tx_map: HashMap<_, _>  = transactions.into_iter().map(|tx| (tx.block_number, tx)).collect();
-
         Ok(blocks
             .into_iter()
             .map(|block| {
@@ -82,15 +80,12 @@ impl EventSource {
                     BlockData {
                         number: block.number as u64,
                         time: block.number as u64,
+                        // default as empty hashmap is equivalent to no transactions in block.
                         transactions: tx_map.remove(&block.number).unwrap_or_default(),
                     },
                 )
             })
             .collect())
-        // Ok(events.into_iter().map(|t| NftEvent {
-        //     base: t.event_base(),
-        //     meta: EventMeta::ApprovalForAll(t.into()),
-        // }))
     }
 
     pub fn get_events_for_block(&mut self, block: i64) -> Result<BlockEvents> {
