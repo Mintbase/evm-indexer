@@ -133,7 +133,7 @@ impl EventHandler {
             .insert(address, TokenContract::from_event_base(event));
     }
 
-    async fn get_missing_node_data(&mut self) -> Result<()> {
+    async fn get_missing_node_data(&mut self) {
         let (mut missing_uris, mut contract_details) = self
             .eth_client
             .get_uris_and_contract_details(
@@ -169,7 +169,6 @@ impl EventHandler {
             contract.name = details.name;
             contract.symbol = details.symbol;
         }
-        Ok(())
     }
 
     pub async fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
@@ -197,7 +196,7 @@ impl EventHandler {
             }
         }
         // Retrieve missing data from node.
-        self.get_missing_node_data().await?;
+        self.get_missing_node_data().await;
 
         // Drain cache and write to store
         self.updates.write(&mut self.store).await;
@@ -291,9 +290,9 @@ impl EventHandler {
         if transfer.from == Address::zero() {
             // Mint: This case is already handled by load_or_initialize
         }
-        nft.owner = transfer.to.0.as_slice().to_vec();
+        nft.owner = transfer.to;
         nft.last_update_block = block;
-        nft.last_update_tx = tx_index;
+        nft.last_update_tx = base.transaction_index as i64;
         nft.last_update_log_index = log_index;
         nft.last_transfer_block = Some(block);
         nft.last_transfer_tx = Some(tx_index);
@@ -406,7 +405,7 @@ mod tests {
         handler.handle_erc721_approval(base, first_approval, &tx);
         let nft = handler.updates.nfts.get(&token).unwrap();
         assert_eq!(
-            Address::expect_from(nft.clone().approved.unwrap()),
+            Address::from(nft.clone().approved.unwrap()),
             approved,
             "first approval"
         );
@@ -451,10 +450,10 @@ mod tests {
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap(),
             &Nft {
-                contract_address: base.contract_address.into(),
+                contract_address: base.contract_address,
                 token_id: token_id.into(),
                 token_uri: None,
-                owner: to.into(),
+                owner: to,
                 last_update_block: base.block_number as i64,
                 last_update_tx: base.transaction_index as i64,
                 last_update_log_index: base.log_index as i64,
@@ -464,7 +463,7 @@ mod tests {
                 mint_tx: base.transaction_index as i64,
                 burn_block: None,
                 burn_tx: None,
-                minter: tx.from.into(),
+                minter: tx.from,
                 approved: None,
             },
             "first transfer"
@@ -489,10 +488,10 @@ mod tests {
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap(),
             &Nft {
-                contract_address: base.contract_address.into(),
+                contract_address: base.contract_address,
                 token_id: token_id.into(),
                 token_uri: None,
-                owner: from.into(),
+                owner: from,
                 last_update_block: base_2.block_number as i64,
                 last_update_tx: base_2.transaction_index as i64,
                 last_update_log_index: base_2.log_index as i64,
@@ -502,7 +501,7 @@ mod tests {
                 mint_tx: base.transaction_index as i64,
                 burn_block: None,
                 burn_tx: None,
-                minter: tx.from.into(),
+                minter: tx.from,
                 approved: None,
             },
             "transfer back"
@@ -527,10 +526,10 @@ mod tests {
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap(),
             &Nft {
-                contract_address: base.contract_address.into(),
+                contract_address: base.contract_address,
                 token_id: token_id.into(),
                 token_uri: None,
-                owner: [0u8; 20].to_vec(),
+                owner: Address::zero(),
                 last_update_block: base_3.block_number as i64,
                 last_update_tx: base_3.transaction_index as i64,
                 last_update_log_index: base_3.log_index as i64,
@@ -540,7 +539,7 @@ mod tests {
                 mint_tx: base.transaction_index as i64,
                 burn_block: Some(base_3.block_number as i64),
                 burn_tx: Some(base_3.transaction_index as i64),
-                minter: tx.from.into(),
+                minter: tx.from,
                 approved: None,
             },
             "burn transfer"
@@ -550,7 +549,7 @@ mod tests {
         handler.handle_erc721_transfer(base, first_transfer, &tx);
         assert_eq!(
             handler.updates.nfts.get(&token).unwrap().owner,
-            [0u8; 20].to_vec(),
+            Address::zero(),
             "idempotency"
         )
     }

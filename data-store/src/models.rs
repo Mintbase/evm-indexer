@@ -2,8 +2,9 @@ use crate::schema::*;
 use bigdecimal::BigDecimal;
 use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
 use diesel::{AsChangeset, Insertable, Queryable, Selectable};
-use eth::types::{Address, BlockData, NftId, TxDetails};
+use eth::types::{Address, BlockData, Bytes32, NftId, TxDetails};
 use event_retriever::db_reader::models::EventBase;
+use serde::Serialize;
 use serde_json::Value;
 
 #[derive(Queryable, Selectable, Insertable, AsChangeset, Debug)]
@@ -16,22 +17,24 @@ pub struct ApprovalForAll {
     approved: bool,
 }
 
-#[derive(Queryable, Selectable, Insertable)]
+#[derive(Queryable, Selectable, Insertable, Serialize, Debug)]
 #[diesel(table_name = contract_abis)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub(crate) struct ContractAbi {
-    address: Vec<u8>,
+pub struct ContractAbi {
+    address: Address,
     abi: Option<Value>,
 }
 
-#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone, Default)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone, Serialize)]
 #[diesel(table_name = nfts)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Nft {
-    pub contract_address: Vec<u8>,
+    #[diesel(serialize_as = Vec<u8>)]
+    pub contract_address: Address,
     pub token_id: BigDecimal,
     pub token_uri: Option<String>,
-    pub owner: Vec<u8>,
+    #[diesel(serialize_as = Vec<u8>)]
+    pub owner: Address,
     pub last_update_block: i64,
     pub last_update_tx: i64,
     pub last_update_log_index: i64,
@@ -41,7 +44,8 @@ pub struct Nft {
     pub mint_tx: i64,
     pub burn_block: Option<i64>,
     pub burn_tx: Option<i64>,
-    pub minter: Vec<u8>,
+    #[diesel(serialize_as = Vec<u8>)]
+    pub minter: Address,
     pub approved: Option<Vec<u8>>,
     // TODO - add content category / flag here.
 }
@@ -49,16 +53,30 @@ pub struct Nft {
 impl Nft {
     pub fn build_from(base: &EventBase, nft_id: &NftId, tx: &TxDetails) -> Self {
         Self {
-            contract_address: nft_id.address.into(),
+            contract_address: nft_id.address,
             token_id: nft_id.token_id.into(),
+            token_uri: None,
+            owner: Address::zero(),
+            last_update_block: 0,
+            last_update_tx: 0,
+            last_update_log_index: 0,
+            last_transfer_block: None,
+            last_transfer_tx: None,
+            // Maybe its best if we set this when transfer comes from Zero.
             mint_block: base.block_number.try_into().expect("i64 block_number"),
             mint_tx: base
                 .transaction_index
                 .try_into()
                 .expect("i64 transaction_index"),
-            minter: tx.from.into(),
-            ..Default::default()
+            burn_block: None,
+            burn_tx: None,
+            minter: tx.from,
+            approved: None,
         }
+    }
+
+    pub fn id(&self) -> String {
+        format!("{:?}/{}", self.contract_address, self.token_id)
     }
 
     pub fn event_applied(&self, base: &EventBase) -> bool {
@@ -67,7 +85,7 @@ impl Nft {
     }
 }
 
-#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset, PartialEq, Debug, Serialize, Clone)]
 #[diesel(table_name = erc1155s)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Erc1155 {
@@ -94,11 +112,12 @@ pub struct Erc1155Owners {
     pub balance: BigDecimal,
 }
 
-#[derive(Queryable, Selectable, Insertable, AsChangeset, PartialEq, Debug)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset, PartialEq, Debug, Clone)]
 #[diesel(table_name = token_contracts)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct TokenContract {
-    pub address: Vec<u8>,
+    #[diesel(serialize_as = Vec<u8>)]
+    pub address: Address,
     // token_type: TokenType,
     pub name: Option<String>,
     pub symbol: Option<String>,
@@ -113,7 +132,7 @@ pub struct TokenContract {
 impl TokenContract {
     pub fn from_event_base(event: &EventBase) -> Self {
         Self {
-            address: event.contract_address.into(),
+            address: event.contract_address,
             // These are populated externally and asynchronously.
             name: None,
             symbol: None,
@@ -131,8 +150,10 @@ impl TokenContract {
 pub struct Transaction {
     block_number: i64,
     index: i64,
-    hash: Vec<u8>,
-    from: Vec<u8>,
+    #[diesel(serialize_as = Vec<u8>)]
+    hash: Bytes32,
+    #[diesel(serialize_as = Vec<u8>)]
+    from: Address,
     to: Option<Vec<u8>>,
 }
 
@@ -141,8 +162,8 @@ impl Transaction {
         Self {
             block_number: block as i64,
             index: index as i64,
-            hash: details.hash.into(),
-            from: details.from.into(),
+            hash: details.hash,
+            from: details.from,
             to: details.to.map(Address::into),
         }
     }
@@ -183,7 +204,7 @@ mod tests {
         assert_eq!(
             TokenContract::from_event_base(&base),
             TokenContract {
-                address: base.contract_address.into(),
+                address: base.contract_address,
                 name: None,
                 symbol: None,
                 created_block: base.block_number.try_into().unwrap(),
@@ -216,12 +237,22 @@ mod tests {
         assert_eq!(
             nft,
             Nft {
-                contract_address: nft_id.address.into(),
+                contract_address: nft_id.address,
                 token_id: nft_id.token_id.into(),
+                token_uri: None,
+                owner: Address::zero(),
+                last_update_block: 0,
+                last_update_tx: 0,
+                last_update_log_index: 0,
+                last_transfer_block: None,
+                last_transfer_tx: None,
+                // Maybe its best if we set this when transfer comes from Zero.
                 mint_block: base.block_number.try_into().unwrap(),
                 mint_tx: base.transaction_index.try_into().unwrap(),
-                minter: from.into(),
-                ..Default::default()
+                burn_block: None,
+                burn_tx: None,
+                minter: from,
+                approved: None,
             }
         );
 
