@@ -7,13 +7,16 @@ use event_retriever::db_reader::models::EventBase;
 use serde::Serialize;
 use serde_json::Value;
 
-#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, Clone)]
 #[diesel(table_name = approval_for_all)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ApprovalForAll {
-    contract_address: Vec<u8>,
-    owner: Vec<u8>,
-    operator: Vec<u8>,
+    #[diesel(serialize_as = Vec<u8>)]
+    contract_address: Address,
+    #[diesel(serialize_as = Vec<u8>)]
+    owner: Address,
+    #[diesel(serialize_as = Vec<u8>)]
+    operator: Address,
     approved: bool,
 }
 

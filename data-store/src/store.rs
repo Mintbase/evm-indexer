@@ -211,10 +211,10 @@ impl DataStore {
 
     pub fn set_approval_for_all(&mut self, approval: ApprovalForAll) {
         let result = diesel::insert_into(approval_for_all::dsl::approval_for_all)
-            .values(&approval)
+            .values(approval.clone())
             .on_conflict((approval_for_all::contract_address, approval_for_all::owner))
             .do_update()
-            .set(&approval)
+            .set(approval.clone())
             .execute(&mut self.client);
         handle_insert_result(result, 1, format!("set_approval_for_all {:?}", approval))
     }
