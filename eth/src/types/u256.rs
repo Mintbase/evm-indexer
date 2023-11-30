@@ -8,6 +8,7 @@ use diesel::{
     Queryable,
 };
 use ethrpc::types::U256 as Uint256;
+use serde::Serialize;
 use std::{num::ParseIntError, str::FromStr};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, SqlType, Hash)]
@@ -18,6 +19,15 @@ impl FromSql<Numeric, Pg> for U256 {
     fn from_sql(bytes: PgValue<'_>) -> deserialize::Result<Self> {
         let big_decimal: BigDecimal = PgNumeric::from_sql(bytes)?.try_into()?;
         Ok(U256::from(big_decimal))
+    }
+}
+
+impl Serialize for U256 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.0.to_string())
     }
 }
 

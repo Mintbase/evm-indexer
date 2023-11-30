@@ -7,7 +7,6 @@ use diesel::{
     sql_types::{Binary, SqlType},
     Expression, Queryable,
 };
-use ethers::utils::hex;
 use ethrpc::types::Address as H160;
 use serde::Serialize;
 use solabi::ethprim::ParseAddressError;
@@ -36,15 +35,24 @@ impl Serialize for Address {
     where
         S: serde::Serializer,
     {
-        let mut bytes = [0u8; 2 + 20 * 2];
-        bytes[..2].copy_from_slice(b"0x");
-        // Can only fail if the buffer size does not match but we know it is correct.
-        hex::encode_to_slice(self.0 .0, &mut bytes[2..]).unwrap();
-        // Hex encoding is always valid utf8.
-        let s = std::str::from_utf8(&bytes).unwrap();
-        serializer.serialize_str(s)
+        serializer.serialize_str(&format!("0x{:x}", self.0))
     }
 }
+
+// impl Serialize for Address {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: serde::Serializer,
+//     {
+//         let mut bytes = [0u8; 2 + 20 * 2];
+//         bytes[..2].copy_from_slice(b"0x");
+//         // Can only fail if the buffer size does not match but we know it is correct.
+//         hex::encode_to_slice(self.0 .0, &mut bytes[2..]).unwrap();
+//         // Hex encoding is always valid utf8.
+//         let s = std::str::from_utf8(&bytes).unwrap();
+//         serializer.serialize_str(s)
+//     }
+// }
 
 /// ! WARNING! This function is meant to be used by Diesel
 /// for Ethereum address fields encoded in postgres
