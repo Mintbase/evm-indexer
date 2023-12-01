@@ -22,6 +22,7 @@ ethrpc = { git = "https://github.com/bh2smith/ethrpc-rs", rev = "04ba07064fcb9ac
 ] }
 solabi = "0.2.0"
 serde = { version = "1.0.193", features = ["derive"] }
+serde_json = "1.0.108"
 
 [dev-dependencies]
 maplit = "1.0.2"

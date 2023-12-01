@@ -8,12 +8,12 @@ use diesel::{
     Expression, Queryable,
 };
 use ethrpc::types::Address as H160;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use solabi::ethprim::ParseAddressError;
 use std::{fmt::Debug, str::FromStr};
 
 /// An address. Can be an EOA or a smart contract address.
-#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SqlType)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SqlType, Deserialize)]
 pub struct Address(pub H160);
 
 impl Debug for Address {
@@ -38,21 +38,6 @@ impl Serialize for Address {
         serializer.serialize_str(&format!("0x{:x}", self.0))
     }
 }
-
-// impl Serialize for Address {
-//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-//     where
-//         S: serde::Serializer,
-//     {
-//         let mut bytes = [0u8; 2 + 20 * 2];
-//         bytes[..2].copy_from_slice(b"0x");
-//         // Can only fail if the buffer size does not match but we know it is correct.
-//         hex::encode_to_slice(self.0 .0, &mut bytes[2..]).unwrap();
-//         // Hex encoding is always valid utf8.
-//         let s = std::str::from_utf8(&bytes).unwrap();
-//         serializer.serialize_str(s)
-//     }
-// }
 
 /// ! WARNING! This function is meant to be used by Diesel
 /// for Ethereum address fields encoded in postgres

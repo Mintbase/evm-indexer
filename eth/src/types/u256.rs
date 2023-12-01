@@ -8,7 +8,7 @@ use diesel::{
     Queryable,
 };
 use ethrpc::types::U256 as Uint256;
-use serde::Serialize;
+use serde::{de, Deserialize, Deserializer, Serialize};
 use std::{num::ParseIntError, str::FromStr};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, SqlType, Hash)]
@@ -28,6 +28,35 @@ impl Serialize for U256 {
         S: serde::Serializer,
     {
         serializer.serialize_str(&self.0.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for U256 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct U256Visitor;
+
+        impl<'de> de::Visitor<'de> for U256Visitor {
+            type Value = U256;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a string representing U256")
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                value
+                    .parse()
+                    .map(U256)
+                    .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(value), &self))
+            }
+        }
+
+        deserializer.deserialize_str(U256Visitor)
     }
 }
 
@@ -95,5 +124,15 @@ mod tests {
         );
         // Max
         assert_eq!(U256(Uint256::MAX), U256::from(ethers::types::U256::MAX));
+    }
+
+    #[test]
+    fn u256_deserialization() {
+        let number = U256::from(1);
+        let string = serde_json::to_string(&number).expect("Failed to serialize to JSON");
+        println!("Number {:?}, String {}", number, string);
+        let deserialized_number: U256 =
+            serde_json::from_str(&string).expect("Failed to deserialize from JSON");
+        assert_eq!(number, deserialized_number);
     }
 }
