@@ -5,8 +5,9 @@ use crate::db_reader::{
     },
     schema::*,
 };
+use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
 use diesel::{Queryable, QueryableByName, Selectable};
-use eth::types::{Address, U256};
+use eth::types::{Address, Bytes32, U256};
 
 pub trait EvmEventTable {
     fn block_number(&self) -> u64;
@@ -202,6 +203,25 @@ impl_evm_event_table!(DbErc1155TransferSingle);
 impl_evm_event_table!(DbErc1155Uri);
 impl_evm_event_table!(DbErc721Approval);
 impl_evm_event_table!(DbErc721Transfer);
+
+#[derive(Queryable, Selectable, Clone, Debug, PartialEq)]
+#[diesel(table_name = transactions)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct Transaction {
+    pub block_number: i64,
+    pub index: i64,
+    pub hash: Bytes32,
+    pub from: Address,
+    pub to: Option<Vec<u8>>,
+}
+
+#[derive(Queryable, Selectable, Clone)]
+#[diesel(table_name = blocks)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct Block {
+    pub number: i64,
+    pub time: NaiveDateTime,
+}
 
 #[cfg(test)]
 mod tests {
