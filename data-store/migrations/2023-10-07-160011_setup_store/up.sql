@@ -4,10 +4,10 @@
 
 CREATE TABLE transactions
 (
-    block_number int8      not null,
-    index        int8      not null,
-    hash         bytea     not null,
-    "from"       bytea     not null,
+    block_number int8  not null,
+    index        int8  not null,
+    hash         bytea not null,
+    "from"       bytea not null,
     "to"         bytea,
     primary key (block_number, index)
 );
@@ -19,8 +19,9 @@ CREATE TABLE token_contracts
     name             text,
     symbol           text,
     -- This uniquely defines creation tx
-    created_block    int8       not null,
-    created_tx_index int8       not null
+    created_block    int8 not null,
+    created_tx_index int8 not null,
+    base_uri         text -- May be null for Erc721
 --     content_flags    content_flag[],
 --     content_category content_category[]
 );
@@ -49,9 +50,6 @@ CREATE TABLE nfts
     burn_tx               int8,
     minter                bytea          not null,
     approved              bytea,
-    -- Metadata:
-    -- TODO - this will likely be moved into its own table.
-    json                  jsonb,
     primary key (contract_address, token_id)
 );
 
@@ -67,6 +65,29 @@ CREATE TABLE approval_for_all
 
 CREATE TABLE blocks
 (
-    number int8      primary key,
+    number int8 primary key,
     time   timestamp not null
+);
+
+CREATE TABLE erc1155s
+(
+    contract_address bytea          not null,
+    token_id         numeric(78, 0) not null,
+    token_uri        text,
+    total_supply     numeric(78, 0) not null,
+    creator_address  bytea,
+    mint_block       int8           not null,
+    mint_tx          int8           not null,
+    PRIMARY KEY (contract_address, token_id),
+    FOREIGN KEY (contract_address) REFERENCES token_contracts (address)
+);
+
+CREATE TABLE erc1155_owners
+(
+    contract_address bytea          not null,
+    token_id         numeric(78, 0) not null,
+    owner            bytea          not null,
+    balance          numeric(78, 0) not null,
+    PRIMARY KEY (contract_address, token_id, owner),
+    FOREIGN KEY (contract_address, token_id) REFERENCES erc1155s (contract_address, token_id)
 );

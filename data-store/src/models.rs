@@ -43,7 +43,6 @@ pub struct Nft {
     pub burn_tx: Option<i64>,
     pub minter: Vec<u8>,
     pub approved: Option<Vec<u8>>,
-    pub json: Option<Value>,
     // TODO - add content category / flag here.
 }
 
@@ -68,6 +67,33 @@ impl Nft {
     }
 }
 
+#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone)]
+#[diesel(table_name = erc1155s)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct Erc1155 {
+    pub contract_address: Vec<u8>,
+    pub token_id: BigDecimal,
+    pub token_uri: Option<String>,
+    /// Sum of over owners of all balances.
+    pub total_supply: BigDecimal,
+    /// Address of first minter.
+    pub creator_address: Vec<u8>,
+    /// Block when token was first minted (i.e. transfer from zero).
+    pub mint_block: i64,
+    /// Transaction index of first mint.
+    pub mint_tx: i64, // TODO - add content category / flag here.
+}
+
+#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone)]
+#[diesel(table_name = erc1155_owners)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct Erc1155Owners {
+    pub contract_address: Vec<u8>,
+    pub token_id: BigDecimal,
+    pub owner: Vec<u8>,
+    pub balance: BigDecimal,
+}
+
 #[derive(Queryable, Selectable, Insertable, AsChangeset, PartialEq, Debug)]
 #[diesel(table_name = token_contracts)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
@@ -78,6 +104,8 @@ pub struct TokenContract {
     pub symbol: Option<String>,
     created_block: i64,
     created_tx_index: i64,
+    /// This is generally non-null for Erc1155s.
+    base_uri: Option<String>,
     // content_flags -> Nullable<Array<Nullable<ContentFlag>>>,
     // content_category -> Nullable<Array<Nullable<ContentCategory>>>
 }
@@ -86,12 +114,13 @@ impl TokenContract {
     pub fn from_event_base(event: &EventBase) -> Self {
         Self {
             address: event.contract_address.into(),
-            // These are populated externally and asyncronously.
+            // These are populated externally and asynchronously.
             name: None,
             symbol: None,
             // assume that the first time a contract is seen is the created block
             created_block: event.block_number.try_into().expect("u64 conversion"),
             created_tx_index: event.transaction_index.try_into().expect("u64 conversion"),
+            base_uri: None,
         }
     }
 }
@@ -159,6 +188,7 @@ mod tests {
                 symbol: None,
                 created_block: base.block_number.try_into().unwrap(),
                 created_tx_index: base.transaction_index.try_into().unwrap(),
+                base_uri: None,
             }
         )
     }
