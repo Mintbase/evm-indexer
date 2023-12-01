@@ -91,13 +91,11 @@ diesel::table! {
     erc1155s (contract_address, token_id) {
         contract_address -> Bytea,
         token_id -> Numeric,
-        creator_name -> Nullable<Text>,
-        creator_address -> Nullable<Bytea>,
+        total_supply -> Numeric,
+        creator_address -> Bytea,
         token_uri -> Nullable<Text>,
         mint_block -> BigInt,
         mint_tx -> BigInt,
-        burn_block -> Nullable<BigInt>,
-        burn_tx -> Nullable<BigInt>,
     }
 }
 

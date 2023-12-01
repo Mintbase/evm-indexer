@@ -74,12 +74,10 @@ CREATE TABLE erc1155s
     contract_address bytea          not null,
     token_id         numeric(78, 0) not null,
     token_uri        text,
-    creator_name     text,
+    total_supply     numeric(78, 0) not null,
     creator_address  bytea,
     mint_block       int8           not null,
     mint_tx          int8           not null,
-    burn_block       int8,
-    burn_tx          int8,
     PRIMARY KEY (contract_address, token_id),
     FOREIGN KEY (contract_address) REFERENCES token_contracts (address)
 );

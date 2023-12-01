@@ -74,11 +74,14 @@ pub struct Erc1155 {
     pub contract_address: Vec<u8>,
     pub token_id: BigDecimal,
     pub token_uri: Option<String>,
+    /// Sum of over owners of all balances.
+    pub total_supply: BigDecimal,
+    /// Address of first minter.
+    pub creator_address: Vec<u8>,
+    /// Block when token was first minted (i.e. transfer from zero).
     pub mint_block: i64,
-    pub mint_tx: i64,
-    pub burn_block: Option<i64>,
-    pub burn_tx: Option<i64>,
-    // TODO - add content category / flag here.
+    /// Transaction index of first mint.
+    pub mint_tx: i64, // TODO - add content category / flag here.
 }
 
 #[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone)]
