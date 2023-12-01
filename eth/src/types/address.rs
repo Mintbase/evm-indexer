@@ -1,43 +1,81 @@
 use diesel::{
     self,
+    backend::Backend,
     deserialize::{self, FromSql},
     pg::{Pg, PgValue},
+    serialize::ToSql,
     sql_types::{Binary, SqlType},
-    Queryable,
+    Expression, Queryable,
 };
 use ethrpc::types::Address as H160;
+use serde::{Deserialize, Serialize};
 use solabi::ethprim::ParseAddressError;
-use std::str::FromStr;
+use std::{fmt::Debug, str::FromStr};
 
 /// An address. Can be an EOA or a smart contract address.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SqlType)]
-#[diesel(postgres_type(name = "Address"))]
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SqlType, Deserialize)]
 pub struct Address(pub H160);
+
+impl Debug for Address {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Address")
+            .field(&format_args!("{}", self.0))
+            .finish()
+    }
+}
 
 impl FromSql<Address, Pg> for Address {
     fn from_sql(bytes: PgValue<'_>) -> deserialize::Result<Self> {
-        Address::try_from(bytes.as_bytes().to_vec()).map_err(|(message, _)| message.into())
+        Ok(Address::from(bytes.as_bytes().to_vec()))
     }
+}
+
+impl Serialize for Address {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&format!("0x{:x}", self.0))
+    }
+}
+
+/// ! WARNING! This function is meant to be used by Diesel
+/// for Ethereum address fields encoded in postgres
+/// as BYTEA type (since there is no fixed length type)
+impl From<Vec<u8>> for Address {
+    fn from(value: Vec<u8>) -> Self {
+        Self(H160::from_slice(value.as_slice()))
+    }
+}
+
+impl<DB> ToSql<Binary, DB> for Address
+where
+    DB: Backend,
+    [u8]: ToSql<Binary, DB>,
+{
+    fn to_sql<'b>(
+        &'b self,
+        out: &mut diesel::serialize::Output<'b, '_, DB>,
+    ) -> diesel::serialize::Result {
+        self.0 .0.as_slice().to_sql(out)
+    }
+}
+
+impl Expression for Address {
+    type SqlType = Binary;
 }
 
 impl Queryable<Binary, Pg> for Address {
     type Row = Vec<u8>;
 
     fn build(row: Self::Row) -> deserialize::Result<Self> {
-        row.try_into().map_err(|(x, _): (&str, _)| x.into())
+        Ok(row.into())
     }
 }
 
 impl Address {
     pub fn zero() -> Self {
         Self(H160([0; 20]))
-    }
-
-    /// ! WARNING! This function is meant to be used by Diesel
-    /// for Ethereum address fields encoded in postgres
-    /// as BYTEA type (since there is no fixed length type)
-    pub fn expect_from(value: Vec<u8>) -> Self {
-        Self::try_from(value).expect("address from vec")
     }
 }
 
@@ -59,24 +97,12 @@ impl From<H160> for Address {
     }
 }
 
-impl TryFrom<Vec<u8>> for Address {
-    type Error = (&'static str, Vec<u8>);
-
-    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
-        if value.len() == 20 {
-            Ok(Self(H160::from_slice(value.as_slice())))
-        } else {
-            Err(("Address bytes must have length 20!", value))
-        }
-    }
-}
-
 impl TryFrom<Option<Vec<u8>>> for Address {
     type Error = (&'static str, Vec<u8>);
 
     fn try_from(value: Option<Vec<u8>>) -> Result<Self, Self::Error> {
         if let Some(addr) = value {
-            addr.try_into()
+            Ok(addr.into())
         } else {
             Err(("Unexpected Null", vec![]))
         }

@@ -1,6 +1,7 @@
 use crate::types::{Address, Bytes32, U256};
 use bigdecimal::BigDecimal;
 use diesel::{self, internal::derives::multiconnection::chrono::NaiveDateTime};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 #[derive(Debug, PartialEq, Clone, Default)]
@@ -18,11 +19,12 @@ impl BlockData {
             .expect("No crazy times plz")
     }
 }
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Serialize, Deserialize)]
 pub struct NftId {
     pub address: Address,
     pub token_id: U256,
 }
+
 impl NftId {
     pub fn db_address(&self) -> Vec<u8> {
         self.address.into()
@@ -32,6 +34,7 @@ impl NftId {
         self.token_id.into()
     }
 }
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct TxDetails {
     pub hash: Bytes32,

@@ -1,4 +1,5 @@
 use crate::{models::*, schema::*};
+
 use anyhow::{Context, Result};
 use diesel::{
     pg::PgConnection,
@@ -44,24 +45,6 @@ fn handle_query_result<T>(result: QueryResult<T>) -> T {
 }
 
 impl DataStore {
-    fn establish_connection(db_url: &str) -> Result<PgConnection> {
-        PgConnection::establish(db_url).context("Error connecting to Diesel Client")
-    }
-
-    fn get_connection_pool(
-        db_url: &str,
-        pool_size: u32,
-        num_threads: usize,
-    ) -> Result<Pool<ConnectionManager<PgConnection>>> {
-        let manager = ConnectionManager::<PgConnection>::new(db_url);
-        Pool::builder()
-            .max_size(pool_size) // Should be a configurable env var
-            .test_on_check_out(true)
-            .thread_pool(Arc::new(ScheduledThreadPool::new(num_threads)))
-            .build(manager)
-            .context("build connection pool")
-    }
-
     pub fn new(connection: &str) -> Result<Self> {
         let pool_size = std::env::var("STORE_POOL_SIZE")
             .unwrap_or("50".to_string())
@@ -75,6 +58,55 @@ impl DataStore {
             client: Self::establish_connection(connection)?,
             pool: Self::get_connection_pool(connection, pool_size, num_threads)?,
         })
+    }
+
+    pub fn load_nft(&mut self, token: &NftId) -> Option<Nft> {
+        let result = nfts::dsl::nfts
+            .filter(nfts::contract_address.eq(&token.db_address()))
+            .filter(nfts::token_id.eq(&token.db_token_id()))
+            .first(&mut self.client)
+            .optional();
+        handle_query_result(result)
+    }
+
+    pub fn load_contract(&mut self, address: Address) -> Option<TokenContract> {
+        let result = token_contracts::dsl::token_contracts
+            .filter(token_contracts::address.eq::<&Vec<u8>>(&address.into()))
+            .first(&mut self.client)
+            .optional();
+        handle_query_result(result)
+    }
+
+    pub fn get_max_block(&mut self) -> i64 {
+        blocks::dsl::blocks
+            .select(diesel::dsl::max(blocks::number))
+            .limit(1)
+            .get_result(&mut self.client)
+            .unwrap_or(Some(0))
+            .unwrap_or(0)
+    }
+
+    pub fn get_nfts_by_owner(&mut self, owner: Address) -> Vec<Nft> {
+        let result = nfts::dsl::nfts
+            .filter(nfts::owner.eq::<Vec<u8>>(owner.into()))
+            .load::<Nft>(&mut self.client);
+        handle_query_result(result)
+    }
+
+    pub fn get_nfts_by_minter(&mut self, minter: Address) -> Vec<Nft> {
+        let result = nfts::dsl::nfts
+            .filter(nfts::minter.eq::<Vec<u8>>(minter.into()))
+            .load::<Nft>(&mut self.client);
+        handle_query_result(result)
+    }
+
+    pub fn get_contract_abi(&mut self, address: Address) -> Option<ContractAbi> {
+        let result = contract_abis::dsl::contract_abis
+            .filter(contract_abis::address.eq::<Vec<u8>>(address.into()))
+            .first(&mut self.client)
+            .optional();
+        // .load::<ContractAbi>(&mut self.client);
+        handle_query_result(result)
     }
 
     pub fn save_transactions(&mut self, txs: Vec<Transaction>) {
@@ -115,33 +147,15 @@ impl DataStore {
         }
     }
 
-    pub fn get_max_block(&mut self) -> i64 {
-        blocks::dsl::blocks
-            .select(diesel::dsl::max(blocks::number))
-            .limit(1)
-            .get_result(&mut self.client)
-            .unwrap_or(Some(0))
-            .unwrap_or(0)
-    }
-
-    fn upsert_nft(conn: &mut PooledConnection<ConnectionManager<PgConnection>>, nft: &Nft) {
+    pub fn save_nft(&mut self, nft: Nft) {
+        let token_id = nft.id();
         let result = diesel::insert_into(nfts::dsl::nfts)
-            .values(nft)
-            .on_conflict((nfts::contract_address, nfts::token_id))
-            .do_update()
-            .set(nft)
-            .execute(conn);
-        handle_insert_result(result, 1, format!("save_nft {:?}", nft))
-    }
-
-    pub fn save_nft(&mut self, nft: &Nft) {
-        let result = diesel::insert_into(nfts::dsl::nfts)
-            .values(nft)
+            .values(nft.clone())
             .on_conflict((nfts::contract_address, nfts::token_id))
             .do_update()
             .set(nft)
             .execute(&mut self.client);
-        handle_insert_result(result, 1, format!("save_nft {:?}", nft))
+        handle_insert_result(result, 1, format!("save_nft: {}", token_id))
     }
 
     pub async fn save_nfts(&mut self, nft_updates: Vec<Nft>) {
@@ -153,7 +167,7 @@ impl DataStore {
             tasks.push(tokio::spawn(async move {
                 let conn: &mut PooledConnection<ConnectionManager<PgConnection>> =
                     &mut pool.get().unwrap();
-                Self::upsert_nft(conn, &nft)
+                Self::upsert_nft(conn, nft)
             }))
         }
         let errors: Vec<tokio::task::JoinError> = futures::future::join_all(tasks)
@@ -171,14 +185,15 @@ impl DataStore {
         }
     }
 
-    pub fn save_contract(&mut self, contract: &TokenContract) {
+    pub fn save_contract(&mut self, contract: TokenContract) {
+        let contract_address = contract.address;
         let result = diesel::insert_into(token_contracts::dsl::token_contracts)
-            .values(contract)
+            .values(contract.clone())
             .on_conflict(token_contracts::address)
             .do_update()
             .set(contract)
             .execute(&mut self.client);
-        handle_insert_result(result, 1, format!("save_contract {:?}", contract))
+        handle_insert_result(result, 1, format!("save_contract {:?}", contract_address))
     }
 
     /// This method, as opposed to its singular counter part may be used under the assumption
@@ -196,29 +211,12 @@ impl DataStore {
 
     pub fn set_approval_for_all(&mut self, approval: ApprovalForAll) {
         let result = diesel::insert_into(approval_for_all::dsl::approval_for_all)
-            .values(&approval)
+            .values(approval.clone())
             .on_conflict((approval_for_all::contract_address, approval_for_all::owner))
             .do_update()
-            .set(&approval)
+            .set(approval.clone())
             .execute(&mut self.client);
         handle_insert_result(result, 1, format!("set_approval_for_all {:?}", approval))
-    }
-
-    pub fn load_nft(&mut self, token: &NftId) -> Option<Nft> {
-        let result = nfts::dsl::nfts
-            .filter(nfts::contract_address.eq(&token.db_address()))
-            .filter(nfts::token_id.eq(&token.db_token_id()))
-            .first(&mut self.client)
-            .optional();
-        handle_query_result(result)
-    }
-
-    pub fn load_contract(&mut self, address: Address) -> Option<TokenContract> {
-        let result = token_contracts::dsl::token_contracts
-            .filter(token_contracts::address.eq::<&Vec<u8>>(&address.into()))
-            .first(&mut self.client)
-            .optional();
-        handle_query_result(result)
     }
 
     pub fn load_or_initialize_nft(
@@ -234,6 +232,35 @@ impl DataStore {
                 Nft::build_from(base, nft_id, tx)
             }
         }
+    }
+
+    fn upsert_nft(conn: &mut PooledConnection<ConnectionManager<PgConnection>>, nft: Nft) {
+        let token_id = nft.id();
+        let result = diesel::insert_into(nfts::dsl::nfts)
+            .values(nft.clone())
+            .on_conflict((nfts::contract_address, nfts::token_id))
+            .do_update()
+            .set(nft)
+            .execute(conn);
+        handle_insert_result(result, 1, format!("save_nft: {}", token_id))
+    }
+
+    fn establish_connection(db_url: &str) -> Result<PgConnection> {
+        PgConnection::establish(db_url).context("Error connecting to Diesel Client")
+    }
+
+    fn get_connection_pool(
+        db_url: &str,
+        pool_size: u32,
+        num_threads: usize,
+    ) -> Result<Pool<ConnectionManager<PgConnection>>> {
+        let manager = ConnectionManager::<PgConnection>::new(db_url);
+        Pool::builder()
+            .max_size(pool_size) // Should be a configurable env var
+            .test_on_check_out(true)
+            .thread_pool(Arc::new(ScheduledThreadPool::new(num_threads)))
+            .build(manager)
+            .context("build connection pool")
     }
 }
 
@@ -390,7 +417,7 @@ mod tests {
         let base = test_event_base();
         let contract = TokenContract::from_event_base(&base);
         assert!(store.load_contract(base.contract_address).is_none());
-        store.save_contract(&contract);
+        store.save_contract(contract);
         assert!(store.load_contract(base.contract_address).is_some());
     }
 }

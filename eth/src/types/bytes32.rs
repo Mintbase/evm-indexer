@@ -6,11 +6,22 @@ use diesel::{
     Queryable,
 };
 use ethrpc::types::Digest as H256;
+use serde::Serialize;
 use solabi::ethprim::ParseDigestError;
 use std::str::FromStr;
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SqlType)]
 #[diesel(postgres_type(name = "Bytes32"))]
 pub struct Bytes32(pub H256);
+
+impl Serialize for Bytes32 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&format!("0x{:x}", self.0))
+    }
+}
 
 impl FromSql<Bytes32, Pg> for Bytes32 {
     fn from_sql(bytes: PgValue<'_>) -> deserialize::Result<Self> {
