@@ -1,8 +1,8 @@
 use crate::schema::*;
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, Zero};
 use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
 use diesel::{AsChangeset, Insertable, Queryable, Selectable};
-use eth::types::{Address, BlockData, Bytes32, NftId, TxDetails};
+use eth::types::{Address, BlockData, Bytes32, NftId, TxDetails, U256};
 use event_retriever::db_reader::models::EventBase;
 use serde::Serialize;
 use serde_json::Value;
@@ -54,7 +54,8 @@ pub struct Nft {
 }
 
 impl Nft {
-    pub fn build_from(base: &EventBase, nft_id: &NftId, tx: &TxDetails) -> Self {
+    pub fn new(base: &EventBase, nft_id: &NftId, tx: &TxDetails) -> Self {
+        // TODO - used non-trivial fields from base here (for block and tx index)
         Self {
             contract_address: nft_id.address,
             token_id: nft_id.token_id.into(),
@@ -88,7 +89,7 @@ impl Nft {
     }
 }
 
-#[derive(Queryable, Selectable, Insertable, AsChangeset, PartialEq, Debug, Serialize, Clone)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone, Serialize)]
 #[diesel(table_name = erc1155s)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Erc1155 {
@@ -105,18 +106,70 @@ pub struct Erc1155 {
     pub mint_block: i64,
     /// Transaction index of first mint.
     pub mint_tx: i64, // TODO - add content category / flag here.
+    /// record keeping fields.
+    pub last_update_block: i64,
+    pub last_update_tx: i64,
+    pub last_update_log_index: i64,
+}
+
+impl Erc1155 {
+    pub fn new(base: &EventBase, nft_id: &NftId, tx: &TxDetails) -> Self {
+        let block = base.block_number.try_into().expect("i64 block_number");
+        let tx_index = base
+            .transaction_index
+            .try_into()
+            .expect("i64 transaction_index");
+        Self {
+            contract_address: nft_id.address,
+            token_id: nft_id.token_id.into(),
+            token_uri: None,
+            total_supply: BigDecimal::zero(),
+            last_update_block: block,
+            last_update_tx: tx_index,
+            last_update_log_index: base.log_index.try_into().expect("i64 log_index"),
+            mint_block: block,
+            mint_tx: tx_index,
+            creator_address: tx.from,
+        }
+    }
+
+    pub fn id(&self) -> String {
+        format!("{:?}/{}", self.contract_address, self.token_id)
+    }
+    pub fn event_applied(&self, base: &EventBase) -> bool {
+        (base.block_number as i64, base.log_index as i64)
+            <= (self.last_update_block, self.last_update_log_index)
+    }
+
+    pub fn increase_supply(&mut self, amount: U256) {
+        self.total_supply += BigDecimal::from(amount);
+    }
+
+    pub fn decrease_supply(&mut self, amount: U256) {
+        self.total_supply -= BigDecimal::from(amount);
+    }
 }
 
 #[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone)]
 #[diesel(table_name = erc1155_owners)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
-pub struct Erc1155Owners {
+pub struct Erc1155Owner {
     #[diesel(serialize_as = Vec<u8>)]
     pub contract_address: Address,
     pub token_id: BigDecimal,
     #[diesel(serialize_as = Vec<u8>)]
     pub owner: Address,
     pub balance: BigDecimal,
+}
+
+impl Erc1155Owner {
+    pub fn increase_balance(&mut self, amount: U256) {
+        self.balance += BigDecimal::from(amount);
+    }
+
+    pub fn decrease_balance(&mut self, amount: U256) {
+        self.balance -= BigDecimal::from(amount);
+    }
 }
 
 #[derive(Queryable, Selectable, Insertable, AsChangeset, PartialEq, Debug, Clone)]
@@ -146,6 +199,7 @@ impl TokenContract {
             // assume that the first time a contract is seen is the created block
             created_block: event.block_number.try_into().expect("u64 conversion"),
             created_tx_index: event.transaction_index.try_into().expect("u64 conversion"),
+            // TODO - try-fetch from Node!
             base_uri: None,
         }
     }
@@ -240,7 +294,7 @@ mod tests {
             from,
             to: Some(Address::from(2)),
         };
-        let nft = Nft::build_from(&base, &nft_id, &tx);
+        let nft = Nft::new(&base, &nft_id, &tx);
         assert_eq!(
             nft,
             Nft {

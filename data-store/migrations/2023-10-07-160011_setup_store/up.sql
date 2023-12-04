@@ -71,13 +71,16 @@ CREATE TABLE blocks
 
 CREATE TABLE erc1155s
 (
-    contract_address bytea          not null,
-    token_id         numeric(78, 0) not null,
-    token_uri        text,
-    total_supply     numeric(78, 0) not null,
-    creator_address  bytea,
-    mint_block       int8           not null,
-    mint_tx          int8           not null,
+    contract_address      bytea          not null,
+    token_id              numeric(78, 0) not null,
+    token_uri             text,
+    total_supply          numeric(78, 0) not null,
+    creator_address       bytea,
+    mint_block            int8           not null,
+    mint_tx               int8           not null,
+    last_update_block     int8           not null,
+    last_update_tx        int8           not null,
+    last_update_log_index int8           not null,
     PRIMARY KEY (contract_address, token_id),
     FOREIGN KEY (contract_address) REFERENCES token_contracts (address)
 );

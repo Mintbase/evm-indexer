@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use data_store::models::{Erc1155, Erc1155Owner};
 use data_store::{
     models::{Nft, TokenContract, Transaction},
     store::DataStore,
@@ -17,6 +18,8 @@ use std::{collections::HashMap, sync::Arc};
 #[derive(Default, Debug, PartialEq)]
 pub struct UpdateCache {
     nfts: HashMap<NftId, Nft>,
+    multi_tokens: HashMap<NftId, Erc1155>,
+    multi_token_owners: HashMap<(NftId, Address), Erc1155Owner>,
     contracts: HashMap<Address, TokenContract>,
     transactions: Vec<Transaction>,
     blocks: Vec<BlockData>,
@@ -44,6 +47,18 @@ impl UpdateCache {
         // Write and clear nfts
         db.save_nfts(std::mem::take(
             &mut self.nfts.drain().map(|(_, v)| v).collect(),
+        ))
+        .await;
+
+        // Write and clear erc1155s
+        db.save_erc1155s(std::mem::take(
+            &mut self.multi_tokens.drain().map(|(_, v)| v).collect(),
+        ))
+        .await;
+
+        // Write and clear erc1155_owners
+        db.save_erc1155_owners(std::mem::take(
+            &mut self.multi_token_owners.drain().map(|(_, v)| v).collect(),
         ))
         .await;
     }
@@ -187,6 +202,24 @@ impl EventHandler {
                     match meta {
                         EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a, tx),
                         EventMeta::Erc721Transfer(t) => self.handle_erc721_transfer(base, t, tx),
+                        EventMeta::Erc1155TransferBatch(batch) => {
+                            for (id, value) in batch.ids.into_iter().zip(batch.values.into_iter()) {
+                                self.handle_erc1155_transfer(
+                                    base,
+                                    Erc1155TransferSingle {
+                                        operator: batch.operator,
+                                        from: batch.from,
+                                        to: batch.to,
+                                        id,
+                                        value,
+                                    },
+                                    tx,
+                                )
+                            }
+                        }
+                        EventMeta::Erc1155TransferSingle(t) => {
+                            self.handle_erc1155_transfer(base, t, tx)
+                        }
                         _ => {
                             // tracing::error!("unhandled event!");
                             continue;
@@ -219,13 +252,13 @@ impl EventHandler {
                 Some(nft) => nft,
                 None => {
                     // tracing::warn!("approval received before token mint {:?}", nft_id);
-                    Nft::build_from(&base, &nft_id, tx)
+                    Nft::new(&base, &nft_id, tx)
                 }
             },
         };
         if nft.event_applied(&base) {
             tracing::warn!(
-                "skippping attempt to replay event {:?} at tx {:?} on {:?}",
+                "skipping attempt to replay event {:?} at tx {:?} on {:?}",
                 base,
                 tx.hash,
                 nft_id
@@ -262,7 +295,7 @@ impl EventHandler {
         };
         if nft.event_applied(&base) {
             tracing::warn!(
-                "skippping attempt to replay event {:?} at tx {:?} on {:?}",
+                "skipping attempt to replay event {:?} at tx {:?} on {:?}",
                 base,
                 tx.hash,
                 nft_id
@@ -300,6 +333,84 @@ impl EventHandler {
         // Approvals are unset on transfer.
         nft.approved = None;
         self.updates.nfts.insert(nft_id, nft);
+    }
+
+    fn handle_erc1155_transfer(
+        &mut self,
+        base: EventBase,
+        transfer: Erc1155TransferSingle,
+        tx: &TxDetails,
+    ) {
+        let nft_id = NftId {
+            address: base.contract_address,
+            token_id: transfer.id,
+        };
+
+        let mut token = match self.updates.multi_tokens.remove(&nft_id) {
+            Some(nft) => nft,
+            None => self.store.load_or_initialize_erc1155(&base, &nft_id, tx),
+        };
+        if token.event_applied(&base) {
+            tracing::warn!(
+                "skipping attempt to replay event {:?} at tx {:?} on {:?}",
+                base,
+                tx.hash,
+                nft_id
+            );
+            // Put the nft back in cache!
+            self.updates.multi_tokens.insert(nft_id, token);
+            return;
+        }
+        let EventBase {
+            block_number,
+            transaction_index,
+            log_index,
+            ..
+        } = base;
+        let block = block_number.try_into().expect("i64 block");
+        let tx_index = transaction_index.try_into().expect("i64 tx_index");
+        let log_index = log_index.try_into().expect("i64 log index");
+
+        token.last_update_block = block;
+        token.last_update_tx = tx_index;
+        token.last_update_log_index = log_index;
+
+        let from = transfer.from;
+        let to = transfer.to;
+
+        // Supply related updates.
+        if to == Address::zero() {
+            token.decrease_supply(transfer.value);
+        }
+        if from == Address::zero() {
+            token.increase_supply(transfer.value);
+        }
+
+        // Ownership updates
+        if from != Address::zero() {
+            let mut sender = match self.updates.multi_token_owners.remove(&(nft_id, from)) {
+                Some(owner) => owner,
+                None => self
+                    .store
+                    .load_or_initialize_erc1155_owner(&base, &nft_id, from),
+            };
+            sender.decrease_balance(transfer.value);
+            self.updates
+                .multi_token_owners
+                .insert((nft_id, from), sender);
+        }
+        let mut recipient = match self.updates.multi_token_owners.remove(&(nft_id, to)) {
+            Some(owner) => owner,
+            None => self
+                .store
+                .load_or_initialize_erc1155_owner(&base, &nft_id, to),
+        };
+        recipient.increase_balance(transfer.value);
+        self.updates
+            .multi_token_owners
+            .insert((nft_id, from), recipient);
+
+        self.updates.multi_tokens.insert(nft_id, token);
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::{models::*, schema::*};
 
 use anyhow::{Context, Result};
+use bigdecimal::{BigDecimal, Zero};
 use diesel::{
     pg::PgConnection,
     prelude::*,
@@ -64,6 +65,25 @@ impl DataStore {
         let result = nfts::dsl::nfts
             .filter(nfts::contract_address.eq(&token.db_address()))
             .filter(nfts::token_id.eq(&token.db_token_id()))
+            .first(&mut self.client)
+            .optional();
+        handle_query_result(result)
+    }
+
+    pub fn load_erc1155(&mut self, token: &NftId) -> Option<Erc1155> {
+        let result = erc1155s::dsl::erc1155s
+            .filter(erc1155s::contract_address.eq(&token.db_address()))
+            .filter(erc1155s::token_id.eq(&token.db_token_id()))
+            .first(&mut self.client)
+            .optional();
+        handle_query_result(result)
+    }
+
+    pub fn load_erc1155_owner(&mut self, token: &NftId, address: Address) -> Option<Erc1155Owner> {
+        let result = erc1155_owners::dsl::erc1155_owners
+            .filter(erc1155_owners::contract_address.eq(&token.db_address()))
+            .filter(erc1155_owners::token_id.eq(&token.db_token_id()))
+            .filter(erc1155_owners::owner.eq::<&Vec<u8>>(&address.into()))
             .first(&mut self.client)
             .optional();
         handle_query_result(result)
@@ -185,6 +205,60 @@ impl DataStore {
         }
     }
 
+    pub async fn save_erc1155s(&mut self, nft_updates: Vec<Erc1155>) {
+        tracing::info!("saving {} erc1155s", nft_updates.len());
+        let mut tasks: Vec<tokio::task::JoinHandle<()>> = vec![];
+
+        for nft in nft_updates {
+            let pool = self.pool.clone();
+            tasks.push(tokio::spawn(async move {
+                let conn: &mut PooledConnection<ConnectionManager<PgConnection>> =
+                    &mut pool.get().unwrap();
+                Self::upsert_erc1155(conn, nft)
+            }))
+        }
+        let errors: Vec<tokio::task::JoinError> = futures::future::join_all(tasks)
+            .await
+            .into_iter()
+            .filter_map(|res| res.err())
+            .collect();
+
+        if !errors.is_empty() {
+            tracing::error!(
+                "failed to update {} erc1155 with errors {:?}",
+                errors.len(),
+                errors
+            );
+        }
+    }
+
+    pub async fn save_erc1155_owners(&mut self, owner_updates: Vec<Erc1155Owner>) {
+        tracing::info!("saving {} owners", owner_updates.len());
+        let mut tasks: Vec<tokio::task::JoinHandle<()>> = vec![];
+
+        for owner in owner_updates {
+            let pool = self.pool.clone();
+            tasks.push(tokio::spawn(async move {
+                let conn: &mut PooledConnection<ConnectionManager<PgConnection>> =
+                    &mut pool.get().unwrap();
+                Self::upsert_erc1155_owner(conn, owner)
+            }))
+        }
+        let errors: Vec<tokio::task::JoinError> = futures::future::join_all(tasks)
+            .await
+            .into_iter()
+            .filter_map(|res| res.err())
+            .collect();
+
+        if !errors.is_empty() {
+            tracing::error!(
+                "failed to update {} erc1155 owners with errors {:?}",
+                errors.len(),
+                errors
+            );
+        }
+    }
+
     pub fn save_contract(&mut self, contract: TokenContract) {
         let contract_address = contract.address;
         let result = diesel::insert_into(token_contracts::dsl::token_contracts)
@@ -229,8 +303,40 @@ impl DataStore {
             Some(nft) => nft,
             None => {
                 tracing::debug!("new nft {:?}", nft_id);
-                Nft::build_from(base, nft_id, tx)
+                Nft::new(base, nft_id, tx)
             }
+        }
+    }
+
+    pub fn load_or_initialize_erc1155(
+        &mut self,
+        base: &EventBase,
+        nft_id: &NftId,
+        tx: &TxDetails,
+    ) -> Erc1155 {
+        match self.load_erc1155(nft_id) {
+            Some(nft) => nft,
+            None => {
+                tracing::debug!("new erc1155 {:?}", nft_id);
+                Erc1155::new(base, nft_id, tx)
+            }
+        }
+    }
+
+    pub fn load_or_initialize_erc1155_owner(
+        &mut self,
+        base: &EventBase,
+        nft_id: &NftId,
+        address: Address,
+    ) -> Erc1155Owner {
+        match self.load_erc1155_owner(nft_id, address) {
+            Some(nft) => nft,
+            None => Erc1155Owner {
+                contract_address: base.contract_address,
+                token_id: nft_id.token_id.into(),
+                owner: address,
+                balance: BigDecimal::zero(),
+            },
         }
     }
 
@@ -243,6 +349,35 @@ impl DataStore {
             .set(nft)
             .execute(conn);
         handle_insert_result(result, 1, format!("save_nft: {}", token_id))
+    }
+
+    fn upsert_erc1155(conn: &mut PooledConnection<ConnectionManager<PgConnection>>, nft: Erc1155) {
+        let token_id = nft.id();
+        let result = diesel::insert_into(erc1155s::dsl::erc1155s)
+            .values(nft.clone())
+            .on_conflict((erc1155s::contract_address, erc1155s::token_id))
+            .do_update()
+            .set(nft)
+            .execute(conn);
+        handle_insert_result(result, 1, format!("save_erc1155: {}", token_id))
+    }
+
+    fn upsert_erc1155_owner(
+        conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
+        owner: Erc1155Owner,
+    ) {
+        let owner_address = owner.owner;
+        let result = diesel::insert_into(erc1155_owners::dsl::erc1155_owners)
+            .values(owner.clone())
+            .on_conflict((
+                erc1155_owners::contract_address,
+                erc1155_owners::token_id,
+                erc1155_owners::owner,
+            ))
+            .do_update()
+            .set(owner)
+            .execute(conn);
+        handle_insert_result(result, 1, format!("save_erc1155_owner {:?}", owner_address))
     }
 
     fn establish_connection(db_url: &str) -> Result<PgConnection> {
@@ -387,7 +522,7 @@ mod tests {
             from: Address::from(1),
             to: Some(Address::from(2)),
         };
-        let nft = Nft::build_from(&base, &token, &tx);
+        let nft = Nft::new(&base, &token, &tx);
         store.save_nfts(vec![nft.clone()]).await;
         assert_eq!(store.load_nft(&token).unwrap(), nft);
     }
@@ -407,7 +542,7 @@ mod tests {
         };
         assert_eq!(
             store.load_or_initialize_nft(&base, &token, &tx),
-            Nft::build_from(&base, &token, &tx)
+            Nft::new(&base, &token, &tx)
         );
     }
 
