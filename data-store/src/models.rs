@@ -92,13 +92,15 @@ impl Nft {
 #[diesel(table_name = erc1155s)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Erc1155 {
-    pub contract_address: Vec<u8>,
+    #[diesel(serialize_as = Vec<u8>)]
+    pub contract_address: Address,
     pub token_id: BigDecimal,
     pub token_uri: Option<String>,
     /// Sum of over owners of all balances.
     pub total_supply: BigDecimal,
     /// Address of first minter.
-    pub creator_address: Vec<u8>,
+    #[diesel(serialize_as = Vec<u8>)]
+    pub creator_address: Address,
     /// Block when token was first minted (i.e. transfer from zero).
     pub mint_block: i64,
     /// Transaction index of first mint.
@@ -109,9 +111,11 @@ pub struct Erc1155 {
 #[diesel(table_name = erc1155_owners)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Erc1155Owners {
-    pub contract_address: Vec<u8>,
+    #[diesel(serialize_as = Vec<u8>)]
+    pub contract_address: Address,
     pub token_id: BigDecimal,
-    pub owner: Vec<u8>,
+    #[diesel(serialize_as = Vec<u8>)]
+    pub owner: Address,
     pub balance: BigDecimal,
 }
 
