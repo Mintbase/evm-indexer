@@ -1,14 +1,15 @@
 use anyhow::{Context, Result};
-use data_store::models::{Erc1155, Erc1155Owner};
+use data_store::models::ApprovalId;
 use data_store::{
-    models::{Nft, TokenContract, Transaction},
+    models::{
+        ApprovalForAll as StoreApproval, Erc1155, Erc1155Owner, Nft, TokenContract, Transaction,
+    },
     store::DataStore,
 };
-use eth::types::U256;
 use eth::{
     rpc::ethrpc::Client as EthRpcClient,
     rpc::EthNodeReading,
-    types::{Address, BlockData, NftId, TxDetails},
+    types::{Address, BlockData, NftId, TxDetails, U256},
 };
 use event_retriever::db_reader::{
     diesel::{BlockRange, EventSource},
@@ -22,6 +23,7 @@ pub struct UpdateCache {
     multi_tokens: HashMap<NftId, Erc1155>,
     /// (Token, Contract, Owner) -> Ownership
     multi_token_owners: HashMap<(NftId, Address, Address), Erc1155Owner>,
+    approval_for_alls: HashMap<ApprovalId, StoreApproval>,
     contracts: HashMap<Address, TokenContract>,
     transactions: Vec<Transaction>,
     blocks: Vec<BlockData>,
@@ -61,6 +63,12 @@ impl UpdateCache {
         // Write and clear erc1155_owners
         db.save_erc1155_owners(std::mem::take(
             &mut self.multi_token_owners.drain().map(|(_, v)| v).collect(),
+        ))
+        .await;
+
+        // Write and clear approval_for_alls
+        db.save_approval_for_alls(std::mem::take(
+            &mut self.approval_for_alls.drain().map(|(_, v)| v).collect(),
         ))
         .await;
     }
@@ -223,10 +231,7 @@ impl EventHandler {
                             self.handle_erc1155_transfer(base, t, tx)
                         }
                         EventMeta::Erc1155Uri(e) => self.handle_erc1155_uri(base, e, tx),
-                        _ => {
-                            // tracing::error!("unhandled event!");
-                            continue;
-                        }
+                        EventMeta::ApprovalForAll(a) => self.handle_approval_for_all(base, a, tx),
                     };
                 }
             }
@@ -448,6 +453,44 @@ impl EventHandler {
         };
         token.token_uri = Some(uri.value);
         self.updates.multi_tokens.insert(token.id(), token);
+    }
+
+    fn handle_approval_for_all(&mut self, base: EventBase, event: ApprovalForAll, tx: &TxDetails) {
+        let approval_id = ApprovalId {
+            contract_address: base.contract_address,
+            owner: event.owner,
+        };
+
+        let mut approval = match self.updates.approval_for_alls.remove(&approval_id) {
+            Some(nft) => nft,
+            None => self.store.load_or_initialize_approval(&approval_id),
+        };
+        if approval.event_applied(&base) {
+            tracing::warn!(
+                "skipping attempt to replay event {:?} at tx {:?} on {:?}",
+                base,
+                tx.hash,
+                approval_id
+            );
+            // Put the nft back in cache!
+            self.updates.approval_for_alls.insert(approval_id, approval);
+            return;
+        }
+        let EventBase {
+            block_number,
+            log_index,
+            ..
+        } = base;
+        let block = block_number.try_into().expect("i64 block");
+        let log_index = log_index.try_into().expect("i64 log index");
+
+        approval.last_update_block = block;
+        approval.last_update_log_index = log_index;
+
+        approval.approved = event.approved;
+        approval.operator = event.operator;
+
+        self.updates.approval_for_alls.insert(approval_id, approval);
     }
 }
 

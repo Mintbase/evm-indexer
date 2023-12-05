@@ -70,6 +70,15 @@ impl DataStore {
         handle_query_result(result)
     }
 
+    pub fn load_approval(&mut self, id: &ApprovalId) -> Option<ApprovalForAll> {
+        let result = approval_for_all::dsl::approval_for_all
+            .filter(approval_for_all::contract_address.eq::<&Vec<u8>>(&id.contract_address.into()))
+            .filter(approval_for_all::owner.eq::<&Vec<u8>>(&id.owner.into()))
+            .first(&mut self.client)
+            .optional();
+        handle_query_result(result)
+    }
+
     pub fn load_erc1155(&mut self, token: &NftId) -> Option<Erc1155> {
         let result = erc1155s::dsl::erc1155s
             .filter(erc1155s::contract_address.eq(&token.db_address()))
@@ -259,6 +268,33 @@ impl DataStore {
         }
     }
 
+    pub async fn save_approval_for_alls(&mut self, approvals: Vec<ApprovalForAll>) {
+        tracing::info!("saving {} approvals", approvals.len());
+        let mut tasks: Vec<tokio::task::JoinHandle<()>> = vec![];
+
+        for approval in approvals {
+            let pool = self.pool.clone();
+            tasks.push(tokio::spawn(async move {
+                let conn: &mut PooledConnection<ConnectionManager<PgConnection>> =
+                    &mut pool.get().unwrap();
+                Self::upsert_approval_for_all(conn, approval)
+            }))
+        }
+        let errors: Vec<tokio::task::JoinError> = futures::future::join_all(tasks)
+            .await
+            .into_iter()
+            .filter_map(|res| res.err())
+            .collect();
+
+        if !errors.is_empty() {
+            tracing::error!(
+                "failed to update {} approval_for_alls with errors {:?}",
+                errors.len(),
+                errors
+            );
+        }
+    }
+
     pub fn save_contract(&mut self, contract: TokenContract) {
         let contract_address = contract.address;
         let result = diesel::insert_into(token_contracts::dsl::token_contracts)
@@ -283,13 +319,16 @@ impl DataStore {
         handle_insert_result(result, expected_inserts, "save_contracts".to_string())
     }
 
-    pub fn set_approval_for_all(&mut self, approval: ApprovalForAll) {
+    pub fn upsert_approval_for_all(
+        conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
+        approval: ApprovalForAll,
+    ) {
         let result = diesel::insert_into(approval_for_all::dsl::approval_for_all)
             .values(approval.clone())
             .on_conflict((approval_for_all::contract_address, approval_for_all::owner))
             .do_update()
             .set(approval.clone())
-            .execute(&mut self.client);
+            .execute(conn);
         handle_insert_result(result, 1, format!("set_approval_for_all {:?}", approval))
     }
 
@@ -336,6 +375,20 @@ impl DataStore {
                 token_id: nft_id.token_id.into(),
                 owner: address,
                 balance: BigDecimal::zero(),
+            },
+        }
+    }
+
+    pub fn load_or_initialize_approval(&mut self, approval_id: &ApprovalId) -> ApprovalForAll {
+        match self.load_approval(approval_id) {
+            Some(approval) => approval,
+            None => ApprovalForAll {
+                contract_address: approval_id.contract_address,
+                owner: approval_id.owner,
+                operator: Address::zero(),
+                approved: false,
+                last_update_block: 0,
+                last_update_log_index: 0,
             },
         }
     }
@@ -419,10 +472,10 @@ mod tests {
         pub fn clear_tables(&mut self) {
             // Delete before contracts because of foreign key constraint!
             // TODO - add other foreign key (erc721/nfts).
-            diesel::delete(erc1155s::dsl::erc1155s)
+            diesel::delete(erc1155_owners::dsl::erc1155_owners)
                 .execute(&mut self.client)
                 .unwrap();
-            diesel::delete(erc1155_owners::dsl::erc1155_owners)
+            diesel::delete(erc1155s::dsl::erc1155s)
                 .execute(&mut self.client)
                 .unwrap();
             diesel::delete(nfts::dsl::nfts)

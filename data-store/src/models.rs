@@ -3,21 +3,54 @@ use bigdecimal::{BigDecimal, Zero};
 use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
 use diesel::{AsChangeset, Insertable, Queryable, Selectable};
 use eth::types::{Address, BlockData, Bytes32, NftId, TxDetails, U256};
-use event_retriever::db_reader::models::EventBase;
+use event_retriever::db_reader::models::{ApprovalForAll as ApprovalEvent, EventBase};
 use serde::Serialize;
 use serde_json::Value;
 
-#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, Clone)]
+#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, Clone, PartialEq, Eq)]
 #[diesel(table_name = approval_for_all)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ApprovalForAll {
     #[diesel(serialize_as = Vec<u8>)]
-    contract_address: Address,
+    pub contract_address: Address,
     #[diesel(serialize_as = Vec<u8>)]
-    owner: Address,
+    pub owner: Address,
     #[diesel(serialize_as = Vec<u8>)]
-    operator: Address,
-    approved: bool,
+    pub operator: Address,
+    pub approved: bool,
+    pub last_update_block: i64,
+    pub last_update_log_index: i64,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub struct ApprovalId {
+    pub contract_address: Address,
+    pub owner: Address,
+}
+
+impl ApprovalForAll {
+    pub fn new(base: &EventBase, event: ApprovalEvent) -> Self {
+        Self {
+            contract_address: base.contract_address,
+            owner: event.owner,
+            operator: event.operator,
+            approved: event.approved,
+            last_update_block: 0,
+            last_update_log_index: 0,
+        }
+    }
+
+    pub fn id(&self) -> ApprovalId {
+        ApprovalId {
+            contract_address: self.contract_address,
+            owner: self.owner,
+        }
+    }
+
+    pub fn event_applied(&self, base: &EventBase) -> bool {
+        (base.block_number as i64, base.log_index as i64)
+            <= (self.last_update_block, self.last_update_log_index)
+    }
 }
 
 #[derive(Queryable, Selectable, Insertable, Serialize, Debug)]

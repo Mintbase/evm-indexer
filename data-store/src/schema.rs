@@ -21,6 +21,8 @@ diesel::table! {
         owner -> Bytea,
         operator -> Bytea,
         approved -> Bool,
+        last_update_block -> Int8,
+        last_update_log_index -> Int8,
     }
 }
 
