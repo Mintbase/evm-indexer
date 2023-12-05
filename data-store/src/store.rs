@@ -417,6 +417,14 @@ mod tests {
 
     impl DataStore {
         pub fn clear_tables(&mut self) {
+            // Delete before contracts because of foreign key constraint!
+            // TODO - add other foreign key (erc721/nfts).
+            diesel::delete(erc1155s::dsl::erc1155s)
+                .execute(&mut self.client)
+                .unwrap();
+            diesel::delete(erc1155_owners::dsl::erc1155_owners)
+                .execute(&mut self.client)
+                .unwrap();
             diesel::delete(nfts::dsl::nfts)
                 .execute(&mut self.client)
                 .unwrap();
