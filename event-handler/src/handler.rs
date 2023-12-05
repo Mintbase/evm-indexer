@@ -4,6 +4,7 @@ use data_store::{
     models::{Nft, TokenContract, Transaction},
     store::DataStore,
 };
+use eth::types::U256;
 use eth::{
     rpc::ethrpc::Client as EthRpcClient,
     rpc::EthNodeReading,
@@ -221,6 +222,7 @@ impl EventHandler {
                         EventMeta::Erc1155TransferSingle(t) => {
                             self.handle_erc1155_transfer(base, t, tx)
                         }
+                        EventMeta::Erc1155Uri(e) => self.handle_erc1155_uri(base, e, tx),
                         _ => {
                             // tracing::error!("unhandled event!");
                             continue;
@@ -336,15 +338,15 @@ impl EventHandler {
         self.updates.nfts.insert(nft_id, nft);
     }
 
-    fn handle_erc1155_transfer(
+    fn before_erc1155_event(
         &mut self,
         base: EventBase,
-        transfer: Erc1155TransferSingle,
+        id: U256,
         tx: &TxDetails,
-    ) {
+    ) -> Option<Erc1155> {
         let nft_id = NftId {
             address: base.contract_address,
-            token_id: transfer.id,
+            token_id: id,
         };
 
         let mut token = match self.updates.multi_tokens.remove(&nft_id) {
@@ -360,7 +362,7 @@ impl EventHandler {
             );
             // Put the nft back in cache!
             self.updates.multi_tokens.insert(nft_id, token);
-            return;
+            return None;
         }
         let EventBase {
             block_number,
@@ -376,6 +378,20 @@ impl EventHandler {
         token.last_update_tx = tx_index;
         token.last_update_log_index = log_index;
 
+        Some(token)
+    }
+
+    fn handle_erc1155_transfer(
+        &mut self,
+        base: EventBase,
+        transfer: Erc1155TransferSingle,
+        tx: &TxDetails,
+    ) {
+        let mut token = match self.before_erc1155_event(base, transfer.id, tx) {
+            Some(token) => token,
+            None => return,
+        };
+
         let from = transfer.from;
         let to = transfer.to;
 
@@ -390,44 +406,55 @@ impl EventHandler {
         // Ownership updates
         let contract = base.contract_address;
         if from != Address::zero() {
-            let mut sender = match self
+            let mut sender =
+                match self
+                    .updates
+                    .multi_token_owners
+                    .remove(&(token.id(), contract, from))
+                {
+                    Some(owner) => owner,
+                    None => self
+                        .store
+                        .load_or_initialize_erc1155_owner(&base, &token.id(), from),
+                };
+            sender.decrease_balance(transfer.value);
+            self.updates
+                .multi_token_owners
+                .insert((token.id(), contract, from), sender);
+        }
+        let mut recipient =
+            match self
                 .updates
                 .multi_token_owners
-                .remove(&(nft_id, contract, from))
+                .remove(&(token.id(), contract, to))
             {
                 Some(owner) => owner,
                 None => self
                     .store
-                    .load_or_initialize_erc1155_owner(&base, &nft_id, from),
+                    .load_or_initialize_erc1155_owner(&base, &token.id(), to),
             };
-            sender.decrease_balance(transfer.value);
-            self.updates
-                .multi_token_owners
-                .insert((nft_id, contract, from), sender);
-        }
-        let mut recipient = match self
-            .updates
-            .multi_token_owners
-            .remove(&(nft_id, contract, to))
-        {
-            Some(owner) => owner,
-            None => self
-                .store
-                .load_or_initialize_erc1155_owner(&base, &nft_id, to),
-        };
         recipient.increase_balance(transfer.value);
         self.updates
             .multi_token_owners
-            .insert((nft_id, contract, to), recipient);
+            .insert((token.id(), contract, to), recipient);
 
-        self.updates.multi_tokens.insert(nft_id, token);
+        self.updates.multi_tokens.insert(token.id(), token);
+    }
+
+    fn handle_erc1155_uri(&mut self, base: EventBase, uri: Erc1155Uri, tx: &TxDetails) {
+        let mut token = match self.before_erc1155_event(base, uri.id, tx) {
+            Some(token) => token,
+            None => return,
+        };
+        token.token_uri = Some(uri.value);
+        self.updates.multi_tokens.insert(token.id(), token);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use eth::types::{Address, Bytes32, NftId, U256};
+    use eth::types::{Address, Bytes32, NftId};
     use event_retriever::db_reader::diesel::BlockRange;
     use std::str::FromStr;
     use tracing_test::traced_test;

@@ -133,8 +133,11 @@ impl Erc1155 {
         }
     }
 
-    pub fn id(&self) -> String {
-        format!("{:?}/{}", self.contract_address, self.token_id)
+    pub fn id(&self) -> NftId {
+        NftId {
+            address: self.contract_address,
+            token_id: self.token_id.clone().into(),
+        }
     }
     pub fn event_applied(&self, base: &EventBase) -> bool {
         (base.block_number as i64, base.log_index as i64)
