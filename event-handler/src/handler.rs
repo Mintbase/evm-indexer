@@ -19,7 +19,8 @@ use std::{collections::HashMap, sync::Arc};
 pub struct UpdateCache {
     nfts: HashMap<NftId, Nft>,
     multi_tokens: HashMap<NftId, Erc1155>,
-    multi_token_owners: HashMap<(NftId, Address), Erc1155Owner>,
+    /// (Token, Contract, Owner) -> Ownership
+    multi_token_owners: HashMap<(NftId, Address, Address), Erc1155Owner>,
     contracts: HashMap<Address, TokenContract>,
     transactions: Vec<Transaction>,
     blocks: Vec<BlockData>,
@@ -387,8 +388,13 @@ impl EventHandler {
         }
 
         // Ownership updates
+        let contract = base.contract_address;
         if from != Address::zero() {
-            let mut sender = match self.updates.multi_token_owners.remove(&(nft_id, from)) {
+            let mut sender = match self
+                .updates
+                .multi_token_owners
+                .remove(&(nft_id, contract, from))
+            {
                 Some(owner) => owner,
                 None => self
                     .store
@@ -397,9 +403,13 @@ impl EventHandler {
             sender.decrease_balance(transfer.value);
             self.updates
                 .multi_token_owners
-                .insert((nft_id, from), sender);
+                .insert((nft_id, contract, from), sender);
         }
-        let mut recipient = match self.updates.multi_token_owners.remove(&(nft_id, to)) {
+        let mut recipient = match self
+            .updates
+            .multi_token_owners
+            .remove(&(nft_id, contract, to))
+        {
             Some(owner) => owner,
             None => self
                 .store
@@ -408,7 +418,7 @@ impl EventHandler {
         recipient.increase_balance(transfer.value);
         self.updates
             .multi_token_owners
-            .insert((nft_id, from), recipient);
+            .insert((nft_id, contract, to), recipient);
 
         self.updates.multi_tokens.insert(nft_id, token);
     }
@@ -512,7 +522,7 @@ mod tests {
             approved,
             id: token.token_id,
         };
-        // Approval before token existance (handled the way the event said)
+        // Approval before token existence (handled the way the event said)
         handler.handle_erc721_approval(base, first_approval, &tx);
         let nft = handler.updates.nfts.get(&token).unwrap();
         assert_eq!(
@@ -663,5 +673,251 @@ mod tests {
             Address::zero(),
             "idempotency"
         )
+    }
+
+    #[tokio::test]
+    async fn erc1155_transfer_handler() {
+        let SetupData {
+            mut handler,
+            token_id: id,
+            token,
+            base,
+            tx,
+        } = setup_data();
+        let from = Address::from(2);
+        let to = Address::from(3);
+        let value = U256::from(456789);
+        let first_transfer = Erc1155TransferSingle {
+            operator: Default::default(),
+            from,
+            to,
+            id,
+            value,
+        };
+        handler.handle_erc1155_transfer(base, first_transfer.clone(), &tx);
+
+        assert_eq!(
+            handler.updates.multi_tokens.get(&token).unwrap(),
+            &Erc1155 {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                token_uri: None,
+                // Note that we did not mint first so this transferred value
+                // is not realized in the total supply
+                total_supply: 0.into(),
+                last_update_block: base.block_number as i64,
+                last_update_tx: base.transaction_index as i64,
+                last_update_log_index: base.log_index as i64,
+                mint_block: base.block_number as i64,
+                mint_tx: base.transaction_index as i64,
+                creator_address: tx.from,
+            },
+            "first transfer"
+        );
+
+        assert_eq!(
+            handler
+                .updates
+                .multi_token_owners
+                .get(&(token, base.contract_address, to))
+                .unwrap(),
+            &Erc1155Owner {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                owner: to,
+                balance: value.into(),
+            },
+            "first transfer recipient balance"
+        );
+
+        assert_eq!(
+            handler
+                .updates
+                .multi_token_owners
+                .get(&(token, base.contract_address, from))
+                .unwrap(),
+            &Erc1155Owner {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                owner: from,
+                // Negative balance because they sent before ever receiving!
+                balance: (-456789).into(),
+            },
+            "first transfer sender balance"
+        );
+
+        let base_2 = EventBase {
+            block_number: 4,
+            log_index: 5,
+            transaction_index: 6,
+            contract_address: base.contract_address,
+        };
+        // Transfer Balance back
+        handler.handle_erc1155_transfer(
+            base_2,
+            Erc1155TransferSingle {
+                from: to,
+                to: from,
+                id,
+                operator: Address::zero(),
+                value,
+            },
+            &tx,
+        );
+
+        assert_eq!(
+            handler.updates.multi_tokens.get(&token).unwrap(),
+            &Erc1155 {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                token_uri: None,
+                total_supply: 0.into(),
+                last_update_block: base_2.block_number as i64,
+                last_update_tx: base_2.transaction_index as i64,
+                last_update_log_index: base_2.log_index as i64,
+                mint_block: base.block_number as i64,
+                mint_tx: base.transaction_index as i64,
+                creator_address: tx.from,
+            },
+            "transfer back"
+        );
+        assert_eq!(
+            handler
+                .updates
+                .multi_token_owners
+                .get(&(token, base.contract_address, to))
+                .unwrap(),
+            &Erc1155Owner {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                owner: to,
+                balance: 0.into(),
+            },
+            "second transfer (back) recipient balance"
+        );
+        assert_eq!(
+            handler
+                .updates
+                .multi_token_owners
+                .get(&(token, base.contract_address, from))
+                .unwrap(),
+            &Erc1155Owner {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                owner: from,
+                // Negative balance because they sent before ever receiving!
+                balance: 0.into(),
+            },
+            "second transfer (back) sender balance"
+        );
+
+        // Mint:
+        let mint_base = EventBase {
+            block_number: 5,
+            log_index: 5,
+            transaction_index: 6,
+            contract_address: base.contract_address,
+        };
+        let mint_transfer = Erc1155TransferSingle {
+            from: Address::zero(),
+            to,
+            id,
+            operator: Address::zero(),
+            value,
+        };
+        handler.handle_erc1155_transfer(mint_base, mint_transfer, &tx);
+
+        assert_eq!(
+            handler.updates.multi_tokens.get(&token).unwrap(),
+            &Erc1155 {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                token_uri: None,
+                total_supply: value.into(),
+                last_update_block: mint_base.block_number as i64,
+                last_update_tx: mint_base.transaction_index as i64,
+                last_update_log_index: mint_base.log_index as i64,
+                mint_block: base.block_number as i64,
+                mint_tx: base.transaction_index as i64,
+                creator_address: tx.from,
+            },
+            "mint"
+        );
+        assert_eq!(
+            handler
+                .updates
+                .multi_token_owners
+                .get(&(token, base.contract_address, to))
+                .unwrap(),
+            &Erc1155Owner {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                owner: to,
+                balance: value.into(),
+            },
+            "mint recipient balance"
+        );
+
+        // Idempotency: try to replay mint event
+        handler.handle_erc1155_transfer(base, first_transfer, &tx);
+        assert_eq!(
+            handler
+                .updates
+                .multi_tokens
+                .get(&token)
+                .unwrap()
+                .total_supply,
+            value.into(),
+            "idempotency"
+        );
+
+        // Burn Token
+        let base_4 = EventBase {
+            block_number: 7,
+            log_index: 8,
+            transaction_index: 9,
+            contract_address: base.contract_address,
+        };
+        handler.handle_erc1155_transfer(
+            base_4,
+            Erc1155TransferSingle {
+                from: to,
+                to: Address::zero(),
+                id,
+                operator: Address::zero(),
+                value,
+            },
+            &tx,
+        );
+        assert_eq!(
+            handler.updates.multi_tokens.get(&token).unwrap(),
+            &Erc1155 {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                token_uri: None,
+                total_supply: 0.into(),
+                last_update_block: base_4.block_number as i64,
+                last_update_tx: base_4.transaction_index as i64,
+                last_update_log_index: base_4.log_index as i64,
+                mint_block: base.block_number as i64,
+                mint_tx: base.transaction_index as i64,
+                creator_address: tx.from,
+            },
+            "burn"
+        );
+        assert_eq!(
+            handler
+                .updates
+                .multi_token_owners
+                .get(&(token, base.contract_address, to))
+                .unwrap(),
+            &Erc1155Owner {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                owner: to,
+                balance: 0.into(),
+            },
+            "burner balance"
+        );
     }
 }
