@@ -55,10 +55,13 @@ CREATE TABLE nfts
 
 CREATE TABLE approval_for_all
 (
-    contract_address bytea not null,
-    owner            bytea not null,
-    operator         bytea not null,
-    approved         bool  not null,
+    contract_address      bytea not null,
+    owner                 bytea not null,
+    operator              bytea not null,
+    approved              bool  not null,
+    -- Used for
+    last_update_block     int8  not null,
+    last_update_log_index int8  not null,
     -- this was semi-arbitrarily chosen, but makes some sense
     primary key (contract_address, owner)
 );
