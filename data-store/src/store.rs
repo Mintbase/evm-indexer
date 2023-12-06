@@ -215,7 +215,7 @@ impl DataStore {
     }
 
     pub async fn save_erc1155s(&mut self, updates: Vec<Erc1155>) {
-        tracing::info!("saving {} erc1155s", nft_updates.len());
+        tracing::info!("saving {} erc1155s", updates.len());
         let mut tasks: Vec<tokio::task::JoinHandle<()>> = vec![];
 
         for token in updates {
