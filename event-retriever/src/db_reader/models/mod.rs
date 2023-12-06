@@ -83,7 +83,7 @@ pub struct Erc1155TransferBatch {
     pub values: Vec<U256>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Erc1155TransferSingle {
     pub operator: Address,
     pub from: Address,

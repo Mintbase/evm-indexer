@@ -55,10 +55,13 @@ CREATE TABLE nfts
 
 CREATE TABLE approval_for_all
 (
-    contract_address bytea not null,
-    owner            bytea not null,
-    operator         bytea not null,
-    approved         bool  not null,
+    contract_address      bytea not null,
+    owner                 bytea not null,
+    operator              bytea not null,
+    approved              bool  not null,
+    -- Used for
+    last_update_block     int8  not null,
+    last_update_log_index int8  not null,
     -- this was semi-arbitrarily chosen, but makes some sense
     primary key (contract_address, owner)
 );
@@ -71,13 +74,16 @@ CREATE TABLE blocks
 
 CREATE TABLE erc1155s
 (
-    contract_address bytea          not null,
-    token_id         numeric(78, 0) not null,
-    token_uri        text,
-    total_supply     numeric(78, 0) not null,
-    creator_address  bytea,
-    mint_block       int8           not null,
-    mint_tx          int8           not null,
+    contract_address      bytea          not null,
+    token_id              numeric(78, 0) not null,
+    token_uri             text,
+    total_supply          numeric(78, 0) not null,
+    creator_address       bytea,
+    mint_block            int8           not null,
+    mint_tx               int8           not null,
+    last_update_block     int8           not null,
+    last_update_tx        int8           not null,
+    last_update_log_index int8           not null,
     PRIMARY KEY (contract_address, token_id),
     FOREIGN KEY (contract_address) REFERENCES token_contracts (address)
 );

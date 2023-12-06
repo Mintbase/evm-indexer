@@ -3,6 +3,7 @@ use bigdecimal::BigDecimal;
 use diesel::{self, internal::derives::multiconnection::chrono::NaiveDateTime};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct BlockData {
@@ -23,6 +24,12 @@ impl BlockData {
 pub struct NftId {
     pub address: Address,
     pub token_id: U256,
+}
+
+impl Display for NftId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}/{}", self.address.0, self.token_id.0)
+    }
 }
 
 impl NftId {

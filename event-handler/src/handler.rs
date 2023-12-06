@@ -1,12 +1,15 @@
 use anyhow::{Context, Result};
+use data_store::models::ApprovalId;
 use data_store::{
-    models::{Nft, TokenContract, Transaction},
+    models::{
+        ApprovalForAll as StoreApproval, Erc1155, Erc1155Owner, Nft, TokenContract, Transaction,
+    },
     store::DataStore,
 };
 use eth::{
     rpc::ethrpc::Client as EthRpcClient,
     rpc::EthNodeReading,
-    types::{Address, BlockData, NftId, TxDetails},
+    types::{Address, BlockData, NftId, TxDetails, U256},
 };
 use event_retriever::db_reader::{
     diesel::{BlockRange, EventSource},
@@ -17,6 +20,10 @@ use std::{collections::HashMap, sync::Arc};
 #[derive(Default, Debug, PartialEq)]
 pub struct UpdateCache {
     nfts: HashMap<NftId, Nft>,
+    multi_tokens: HashMap<NftId, Erc1155>,
+    /// (Token, Contract, Owner) -> Ownership
+    multi_token_owners: HashMap<(NftId, Address, Address), Erc1155Owner>,
+    approval_for_alls: HashMap<ApprovalId, StoreApproval>,
     contracts: HashMap<Address, TokenContract>,
     transactions: Vec<Transaction>,
     blocks: Vec<BlockData>,
@@ -44,6 +51,24 @@ impl UpdateCache {
         // Write and clear nfts
         db.save_nfts(std::mem::take(
             &mut self.nfts.drain().map(|(_, v)| v).collect(),
+        ))
+        .await;
+
+        // Write and clear erc1155s
+        db.save_erc1155s(std::mem::take(
+            &mut self.multi_tokens.drain().map(|(_, v)| v).collect(),
+        ))
+        .await;
+
+        // Write and clear erc1155_owners
+        db.save_erc1155_owners(std::mem::take(
+            &mut self.multi_token_owners.drain().map(|(_, v)| v).collect(),
+        ))
+        .await;
+
+        // Write and clear approval_for_alls
+        db.save_approval_for_alls(std::mem::take(
+            &mut self.approval_for_alls.drain().map(|(_, v)| v).collect(),
         ))
         .await;
     }
@@ -187,10 +212,26 @@ impl EventHandler {
                     match meta {
                         EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a, tx),
                         EventMeta::Erc721Transfer(t) => self.handle_erc721_transfer(base, t, tx),
-                        _ => {
-                            // tracing::error!("unhandled event!");
-                            continue;
+                        EventMeta::Erc1155TransferBatch(batch) => {
+                            for (id, value) in batch.ids.into_iter().zip(batch.values.into_iter()) {
+                                self.handle_erc1155_transfer(
+                                    base,
+                                    Erc1155TransferSingle {
+                                        operator: batch.operator,
+                                        from: batch.from,
+                                        to: batch.to,
+                                        id,
+                                        value,
+                                    },
+                                    tx,
+                                )
+                            }
                         }
+                        EventMeta::Erc1155TransferSingle(t) => {
+                            self.handle_erc1155_transfer(base, t, tx)
+                        }
+                        EventMeta::Erc1155Uri(e) => self.handle_erc1155_uri(base, e, tx),
+                        EventMeta::ApprovalForAll(a) => self.handle_approval_for_all(base, a, tx),
                     };
                 }
             }
@@ -219,13 +260,13 @@ impl EventHandler {
                 Some(nft) => nft,
                 None => {
                     // tracing::warn!("approval received before token mint {:?}", nft_id);
-                    Nft::build_from(&base, &nft_id, tx)
+                    Nft::new(&base, &nft_id, tx)
                 }
             },
         };
         if nft.event_applied(&base) {
             tracing::warn!(
-                "skippping attempt to replay event {:?} at tx {:?} on {:?}",
+                "skipping attempt to replay event {:?} at tx {:?} on {:?}",
                 base,
                 tx.hash,
                 nft_id
@@ -262,7 +303,7 @@ impl EventHandler {
         };
         if nft.event_applied(&base) {
             tracing::warn!(
-                "skippping attempt to replay event {:?} at tx {:?} on {:?}",
+                "skipping attempt to replay event {:?} at tx {:?} on {:?}",
                 base,
                 tx.hash,
                 nft_id
@@ -301,12 +342,162 @@ impl EventHandler {
         nft.approved = None;
         self.updates.nfts.insert(nft_id, nft);
     }
+
+    fn before_erc1155_event(
+        &mut self,
+        base: EventBase,
+        id: U256,
+        tx: &TxDetails,
+    ) -> Option<Erc1155> {
+        let nft_id = NftId {
+            address: base.contract_address,
+            token_id: id,
+        };
+
+        let mut token = match self.updates.multi_tokens.remove(&nft_id) {
+            Some(nft) => nft,
+            None => self.store.load_or_initialize_erc1155(&base, &nft_id, tx),
+        };
+        if token.event_applied(&base) {
+            tracing::warn!(
+                "skipping attempt to replay event {:?} at tx {:?} on {:?}",
+                base,
+                tx.hash,
+                nft_id
+            );
+            // Put the nft back in cache!
+            self.updates.multi_tokens.insert(nft_id, token);
+            return None;
+        }
+        let EventBase {
+            block_number,
+            transaction_index,
+            log_index,
+            ..
+        } = base;
+        let block = block_number.try_into().expect("i64 block");
+        let tx_index = transaction_index.try_into().expect("i64 tx_index");
+        let log_index = log_index.try_into().expect("i64 log index");
+
+        token.last_update_block = block;
+        token.last_update_tx = tx_index;
+        token.last_update_log_index = log_index;
+
+        Some(token)
+    }
+
+    fn handle_erc1155_transfer(
+        &mut self,
+        base: EventBase,
+        transfer: Erc1155TransferSingle,
+        tx: &TxDetails,
+    ) {
+        let mut token = match self.before_erc1155_event(base, transfer.id, tx) {
+            Some(token) => token,
+            None => return,
+        };
+
+        let from = transfer.from;
+        let to = transfer.to;
+
+        // Supply related updates.
+        if to == Address::zero() {
+            token.decrease_supply(transfer.value);
+        }
+        if from == Address::zero() {
+            token.increase_supply(transfer.value);
+        }
+
+        // Ownership updates
+        let contract = base.contract_address;
+        if from != Address::zero() {
+            let mut sender =
+                match self
+                    .updates
+                    .multi_token_owners
+                    .remove(&(token.id(), contract, from))
+                {
+                    Some(owner) => owner,
+                    None => self
+                        .store
+                        .load_or_initialize_erc1155_owner(&base, &token.id(), from),
+                };
+            sender.decrease_balance(transfer.value);
+            self.updates
+                .multi_token_owners
+                .insert((token.id(), contract, from), sender);
+        }
+        let mut recipient =
+            match self
+                .updates
+                .multi_token_owners
+                .remove(&(token.id(), contract, to))
+            {
+                Some(owner) => owner,
+                None => self
+                    .store
+                    .load_or_initialize_erc1155_owner(&base, &token.id(), to),
+            };
+        recipient.increase_balance(transfer.value);
+        self.updates
+            .multi_token_owners
+            .insert((token.id(), contract, to), recipient);
+
+        self.updates.multi_tokens.insert(token.id(), token);
+    }
+
+    fn handle_erc1155_uri(&mut self, base: EventBase, uri: Erc1155Uri, tx: &TxDetails) {
+        let mut token = match self.before_erc1155_event(base, uri.id, tx) {
+            Some(token) => token,
+            None => return,
+        };
+        token.token_uri = Some(uri.value);
+        self.updates.multi_tokens.insert(token.id(), token);
+    }
+
+    fn handle_approval_for_all(&mut self, base: EventBase, event: ApprovalForAll, tx: &TxDetails) {
+        let approval_id = ApprovalId {
+            contract_address: base.contract_address,
+            owner: event.owner,
+        };
+
+        let mut approval = match self.updates.approval_for_alls.remove(&approval_id) {
+            Some(nft) => nft,
+            None => self.store.load_or_initialize_approval(&approval_id),
+        };
+        if approval.event_applied(&base) {
+            tracing::warn!(
+                "skipping attempt to replay event {:?} at tx {:?} on {:?}",
+                base,
+                tx.hash,
+                approval_id
+            );
+            // Put the nft back in cache!
+            self.updates.approval_for_alls.insert(approval_id, approval);
+            return;
+        }
+        let EventBase {
+            block_number,
+            log_index,
+            ..
+        } = base;
+        let block = block_number.try_into().expect("i64 block");
+        let log_index = log_index.try_into().expect("i64 log index");
+
+        approval.last_update_block = block;
+        approval.last_update_log_index = log_index;
+
+        approval.approved = event.approved;
+        approval.operator = event.operator;
+
+        self.updates.approval_for_alls.insert(approval_id, approval);
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use eth::types::{Address, Bytes32, NftId, U256};
+    use eth::types::{Address, Bytes32, NftId};
     use event_retriever::db_reader::diesel::BlockRange;
     use std::str::FromStr;
     use tracing_test::traced_test;
@@ -401,7 +592,7 @@ mod tests {
             approved,
             id: token.token_id,
         };
-        // Approval before token existance (handled the way the event said)
+        // Approval before token existence (handled the way the event said)
         handler.handle_erc721_approval(base, first_approval, &tx);
         let nft = handler.updates.nfts.get(&token).unwrap();
         assert_eq!(
@@ -552,5 +743,408 @@ mod tests {
             Address::zero(),
             "idempotency"
         )
+    }
+
+    #[tokio::test]
+    async fn erc1155_transfer_handler() {
+        let SetupData {
+            mut handler,
+            token_id: id,
+            token,
+            base,
+            tx,
+        } = setup_data();
+        let from = Address::from(2);
+        let to = Address::from(3);
+        let value = U256::from(456789);
+        let first_transfer = Erc1155TransferSingle {
+            operator: Default::default(),
+            from,
+            to,
+            id,
+            value,
+        };
+        handler.handle_erc1155_transfer(base, first_transfer.clone(), &tx);
+
+        assert_eq!(
+            handler.updates.multi_tokens.get(&token).unwrap(),
+            &Erc1155 {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                token_uri: None,
+                // Note that we did not mint first so this transferred value
+                // is not realized in the total supply
+                total_supply: 0.into(),
+                last_update_block: base.block_number as i64,
+                last_update_tx: base.transaction_index as i64,
+                last_update_log_index: base.log_index as i64,
+                mint_block: base.block_number as i64,
+                mint_tx: base.transaction_index as i64,
+                creator_address: tx.from,
+            },
+            "first transfer"
+        );
+
+        assert_eq!(
+            handler
+                .updates
+                .multi_token_owners
+                .get(&(token, base.contract_address, to))
+                .unwrap(),
+            &Erc1155Owner {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                owner: to,
+                balance: value.into(),
+            },
+            "first transfer recipient balance"
+        );
+
+        assert_eq!(
+            handler
+                .updates
+                .multi_token_owners
+                .get(&(token, base.contract_address, from))
+                .unwrap(),
+            &Erc1155Owner {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                owner: from,
+                // Negative balance because they sent before ever receiving!
+                balance: (-456789).into(),
+            },
+            "first transfer sender balance"
+        );
+
+        let base_2 = EventBase {
+            block_number: 4,
+            log_index: 5,
+            transaction_index: 6,
+            contract_address: base.contract_address,
+        };
+        // Transfer Balance back
+        handler.handle_erc1155_transfer(
+            base_2,
+            Erc1155TransferSingle {
+                from: to,
+                to: from,
+                id,
+                operator: Address::zero(),
+                value,
+            },
+            &tx,
+        );
+
+        assert_eq!(
+            handler.updates.multi_tokens.get(&token).unwrap(),
+            &Erc1155 {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                token_uri: None,
+                total_supply: 0.into(),
+                last_update_block: base_2.block_number as i64,
+                last_update_tx: base_2.transaction_index as i64,
+                last_update_log_index: base_2.log_index as i64,
+                mint_block: base.block_number as i64,
+                mint_tx: base.transaction_index as i64,
+                creator_address: tx.from,
+            },
+            "transfer back"
+        );
+        assert_eq!(
+            handler
+                .updates
+                .multi_token_owners
+                .get(&(token, base.contract_address, to))
+                .unwrap(),
+            &Erc1155Owner {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                owner: to,
+                balance: 0.into(),
+            },
+            "second transfer (back) recipient balance"
+        );
+        assert_eq!(
+            handler
+                .updates
+                .multi_token_owners
+                .get(&(token, base.contract_address, from))
+                .unwrap(),
+            &Erc1155Owner {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                owner: from,
+                // Negative balance because they sent before ever receiving!
+                balance: 0.into(),
+            },
+            "second transfer (back) sender balance"
+        );
+
+        // Mint:
+        let mint_base = EventBase {
+            block_number: 5,
+            log_index: 5,
+            transaction_index: 6,
+            contract_address: base.contract_address,
+        };
+        let mint_transfer = Erc1155TransferSingle {
+            from: Address::zero(),
+            to,
+            id,
+            operator: Address::zero(),
+            value,
+        };
+        handler.handle_erc1155_transfer(mint_base, mint_transfer, &tx);
+
+        assert_eq!(
+            handler.updates.multi_tokens.get(&token).unwrap(),
+            &Erc1155 {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                token_uri: None,
+                total_supply: value.into(),
+                last_update_block: mint_base.block_number as i64,
+                last_update_tx: mint_base.transaction_index as i64,
+                last_update_log_index: mint_base.log_index as i64,
+                mint_block: base.block_number as i64,
+                mint_tx: base.transaction_index as i64,
+                creator_address: tx.from,
+            },
+            "mint"
+        );
+        assert_eq!(
+            handler
+                .updates
+                .multi_token_owners
+                .get(&(token, base.contract_address, to))
+                .unwrap(),
+            &Erc1155Owner {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                owner: to,
+                balance: value.into(),
+            },
+            "mint recipient balance"
+        );
+
+        // Idempotency: try to replay mint event
+        handler.handle_erc1155_transfer(base, first_transfer, &tx);
+        assert_eq!(
+            handler
+                .updates
+                .multi_tokens
+                .get(&token)
+                .unwrap()
+                .total_supply,
+            value.into(),
+            "idempotency"
+        );
+
+        // Burn Token
+        let base_4 = EventBase {
+            block_number: 7,
+            log_index: 8,
+            transaction_index: 9,
+            contract_address: base.contract_address,
+        };
+        handler.handle_erc1155_transfer(
+            base_4,
+            Erc1155TransferSingle {
+                from: to,
+                to: Address::zero(),
+                id,
+                operator: Address::zero(),
+                value,
+            },
+            &tx,
+        );
+        assert_eq!(
+            handler.updates.multi_tokens.get(&token).unwrap(),
+            &Erc1155 {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                token_uri: None,
+                total_supply: 0.into(),
+                last_update_block: base_4.block_number as i64,
+                last_update_tx: base_4.transaction_index as i64,
+                last_update_log_index: base_4.log_index as i64,
+                mint_block: base.block_number as i64,
+                mint_tx: base.transaction_index as i64,
+                creator_address: tx.from,
+            },
+            "burn"
+        );
+        assert_eq!(
+            handler
+                .updates
+                .multi_token_owners
+                .get(&(token, base.contract_address, to))
+                .unwrap(),
+            &Erc1155Owner {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                owner: to,
+                balance: 0.into(),
+            },
+            "burner balance"
+        );
+    }
+
+    #[tokio::test]
+    async fn erc1155_uri() {
+        let SetupData {
+            mut handler,
+            token_id: id,
+            token,
+            base,
+            tx,
+        } = setup_data();
+        let value = "https://my-website.com".to_string();
+
+        handler.handle_erc1155_uri(
+            base,
+            Erc1155Uri {
+                id,
+                value: value.clone(),
+            },
+            &tx,
+        );
+
+        assert_eq!(
+            handler.updates.multi_tokens.get(&token).unwrap(),
+            &Erc1155 {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                token_uri: Some(value.clone()),
+                // Note that we did not mint first so this transferred value
+                // is not realized in the total supply
+                total_supply: 0.into(),
+                last_update_block: base.block_number as i64,
+                last_update_tx: base.transaction_index as i64,
+                last_update_log_index: base.log_index as i64,
+                mint_block: base.block_number as i64,
+                mint_tx: base.transaction_index as i64,
+                creator_address: tx.from,
+            },
+            "uri update"
+        );
+        // Replay protection (inherited from token)
+        let new_value = "Different website".to_string();
+        handler.handle_erc1155_uri(
+            base,
+            Erc1155Uri {
+                id,
+                value: new_value.clone(),
+            },
+            &tx,
+        );
+        assert_eq!(
+            handler.updates.multi_tokens.get(&token).unwrap(),
+            &Erc1155 {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                token_uri: Some(value),
+                // Note that we did not mint first so this transferred value
+                // is not realized in the total supply
+                total_supply: 0.into(),
+                last_update_block: base.block_number as i64,
+                last_update_tx: base.transaction_index as i64,
+                last_update_log_index: base.log_index as i64,
+                mint_block: base.block_number as i64,
+                mint_tx: base.transaction_index as i64,
+                creator_address: tx.from,
+            },
+            "idempotency"
+        );
+    }
+
+    #[tokio::test]
+    async fn approval_for_all() {
+        let SetupData {
+            mut handler,
+            token_id: _,
+            token: _,
+            mut base,
+            tx,
+        } = setup_data();
+
+        let owner = Address::from(3);
+        let operator = Address::from(4);
+        let approval_id = ApprovalId {
+            contract_address: base.contract_address,
+            owner,
+        };
+
+        handler.handle_approval_for_all(
+            base,
+            ApprovalForAll {
+                owner,
+                operator,
+                approved: true,
+            },
+            &tx,
+        );
+
+        assert_eq!(
+            handler.updates.approval_for_alls.get(&approval_id).unwrap(),
+            &StoreApproval {
+                contract_address: base.contract_address,
+                owner,
+                operator,
+                approved: true,
+                last_update_block: base.block_number as i64,
+                last_update_log_index: base.log_index as i64,
+            },
+            "true approval"
+        );
+
+        // Increment event index (to reuse) and set approval event to false.
+        base.block_number += 1;
+        handler.handle_approval_for_all(
+            base,
+            ApprovalForAll {
+                owner,
+                operator,
+                approved: false,
+            },
+            &tx,
+        );
+
+        assert_eq!(
+            handler.updates.approval_for_alls.get(&approval_id).unwrap(),
+            &StoreApproval {
+                contract_address: base.contract_address,
+                owner,
+                operator,
+                approved: false,
+                last_update_block: base.block_number as i64,
+                last_update_log_index: base.log_index as i64,
+            },
+            "false approval"
+        );
+
+        // Replay protection -- failed attempt to change to true
+        handler.handle_approval_for_all(
+            base,
+            ApprovalForAll {
+                owner,
+                operator,
+                approved: true,
+            },
+            &tx,
+        );
+        assert_eq!(
+            handler.updates.approval_for_alls.get(&approval_id).unwrap(),
+            &StoreApproval {
+                contract_address: base.contract_address,
+                owner,
+                operator,
+                approved: false,
+                last_update_block: base.block_number as i64,
+                last_update_log_index: base.log_index as i64,
+            },
+            "idempotency"
+        );
     }
 }

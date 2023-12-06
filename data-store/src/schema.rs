@@ -21,6 +21,8 @@ diesel::table! {
         owner -> Bytea,
         operator -> Bytea,
         approved -> Bool,
+        last_update_block -> Int8,
+        last_update_log_index -> Int8,
     }
 }
 
@@ -91,11 +93,14 @@ diesel::table! {
     erc1155s (contract_address, token_id) {
         contract_address -> Bytea,
         token_id -> Numeric,
+        token_uri -> Nullable<Text>,
         total_supply -> Numeric,
         creator_address -> Bytea,
-        token_uri -> Nullable<Text>,
-        mint_block -> BigInt,
-        mint_tx -> BigInt,
+        mint_block -> Int8,
+        mint_tx -> Int8,
+        last_update_block -> Int8,
+        last_update_tx -> Int8,
+        last_update_log_index -> Int8,
     }
 }
 
