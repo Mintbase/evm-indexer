@@ -990,4 +990,161 @@ mod tests {
             "burner balance"
         );
     }
+
+    #[tokio::test]
+    async fn erc1155_uri() {
+        let SetupData {
+            mut handler,
+            token_id: id,
+            token,
+            base,
+            tx,
+        } = setup_data();
+        let value = "https://my-website.com".to_string();
+
+        handler.handle_erc1155_uri(
+            base,
+            Erc1155Uri {
+                id,
+                value: value.clone(),
+            },
+            &tx,
+        );
+
+        assert_eq!(
+            handler.updates.multi_tokens.get(&token).unwrap(),
+            &Erc1155 {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                token_uri: Some(value.clone()),
+                // Note that we did not mint first so this transferred value
+                // is not realized in the total supply
+                total_supply: 0.into(),
+                last_update_block: base.block_number as i64,
+                last_update_tx: base.transaction_index as i64,
+                last_update_log_index: base.log_index as i64,
+                mint_block: base.block_number as i64,
+                mint_tx: base.transaction_index as i64,
+                creator_address: tx.from,
+            },
+            "uri update"
+        );
+        // Replay protection (inherited from token)
+        let new_value = "Different website".to_string();
+        handler.handle_erc1155_uri(
+            base,
+            Erc1155Uri {
+                id,
+                value: new_value.clone(),
+            },
+            &tx,
+        );
+        assert_eq!(
+            handler.updates.multi_tokens.get(&token).unwrap(),
+            &Erc1155 {
+                contract_address: base.contract_address,
+                token_id: id.into(),
+                token_uri: Some(value),
+                // Note that we did not mint first so this transferred value
+                // is not realized in the total supply
+                total_supply: 0.into(),
+                last_update_block: base.block_number as i64,
+                last_update_tx: base.transaction_index as i64,
+                last_update_log_index: base.log_index as i64,
+                mint_block: base.block_number as i64,
+                mint_tx: base.transaction_index as i64,
+                creator_address: tx.from,
+            },
+            "idempotency"
+        );
+    }
+
+    #[tokio::test]
+    async fn approval_for_all() {
+        let SetupData {
+            mut handler,
+            token_id: _,
+            token: _,
+            mut base,
+            tx,
+        } = setup_data();
+
+        let owner = Address::from(3);
+        let operator = Address::from(4);
+        let approval_id = ApprovalId {
+            contract_address: base.contract_address,
+            owner,
+        };
+
+        handler.handle_approval_for_all(
+            base,
+            ApprovalForAll {
+                owner,
+                operator,
+                approved: true,
+            },
+            &tx,
+        );
+
+        assert_eq!(
+            handler.updates.approval_for_alls.get(&approval_id).unwrap(),
+            &StoreApproval {
+                contract_address: base.contract_address,
+                owner,
+                operator,
+                approved: true,
+                last_update_block: base.block_number as i64,
+                last_update_log_index: base.log_index as i64,
+            },
+            "true approval"
+        );
+
+        // Increment event index (to reuse) and set approval event to false.
+        base.block_number += 1;
+        handler.handle_approval_for_all(
+            base,
+            ApprovalForAll {
+                owner,
+                operator,
+                approved: false,
+            },
+            &tx,
+        );
+
+        assert_eq!(
+            handler.updates.approval_for_alls.get(&approval_id).unwrap(),
+            &StoreApproval {
+                contract_address: base.contract_address,
+                owner,
+                operator,
+                approved: false,
+                last_update_block: base.block_number as i64,
+                last_update_log_index: base.log_index as i64,
+            },
+            "false approval"
+        );
+
+        // Replay protection -- failed attempt to change to true
+        handler.handle_approval_for_all(
+            base,
+            ApprovalForAll {
+                owner,
+                operator,
+                approved: true,
+            },
+            &tx,
+        );
+        assert_eq!(
+            handler.updates.approval_for_alls.get(&approval_id).unwrap(),
+            &StoreApproval {
+                contract_address: base.contract_address,
+                owner,
+                operator,
+                approved: false,
+                last_update_block: base.block_number as i64,
+                last_update_log_index: base.log_index as i64,
+            },
+            "idempotency"
+        );
+    }
 }
