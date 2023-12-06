@@ -214,16 +214,16 @@ impl DataStore {
         }
     }
 
-    pub async fn save_erc1155s(&mut self, nft_updates: Vec<Erc1155>) {
+    pub async fn save_erc1155s(&mut self, updates: Vec<Erc1155>) {
         tracing::info!("saving {} erc1155s", nft_updates.len());
         let mut tasks: Vec<tokio::task::JoinHandle<()>> = vec![];
 
-        for nft in nft_updates {
+        for token in updates {
             let pool = self.pool.clone();
             tasks.push(tokio::spawn(async move {
                 let conn: &mut PooledConnection<ConnectionManager<PgConnection>> =
                     &mut pool.get().unwrap();
-                Self::upsert_erc1155(conn, nft)
+                Self::upsert_erc1155(conn, token)
             }))
         }
         let errors: Vec<tokio::task::JoinError> = futures::future::join_all(tasks)
