@@ -1,4 +1,4 @@
 mod config;
-pub mod handlers;
+mod handler;
 pub mod processor;
-pub mod update_cache;
+mod update_cache;

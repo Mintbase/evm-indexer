@@ -1,6 +1,8 @@
-use crate::config::{ChainDataSource, HandlerConfig};
-use crate::handlers::EventHandler;
-use crate::update_cache::UpdateCache;
+use crate::{
+    config::{ChainDataSource, HandlerConfig},
+    handler::EventHandler,
+    update_cache::UpdateCache,
+};
 use anyhow::{Context, Result};
 use data_store::{
     models::{TokenContract, Transaction},
