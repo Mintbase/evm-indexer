@@ -7,4 +7,6 @@ pub enum ChainDataSource {
 pub struct HandlerConfig {
     /// Source of chain data (blocks & transactions)
     pub chain_data_source: ChainDataSource,
+    /// How wide of block ranges to process at once.
+    pub page_size: i64,
 }

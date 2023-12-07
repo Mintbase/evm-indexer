@@ -44,6 +44,49 @@ impl EventProcessor {
         })
     }
 
+    pub async fn run(&mut self, start_from: i64) -> Result<()> {
+        let mut current_block = start_from;
+        loop {
+            // TODO - eventually replace with get_indexed_block (finalized is safer)
+            let max_block = self.source.get_finalized_block();
+
+            if current_block >= max_block {
+                // Exit when reached or exceeded the max_block
+                break;
+            }
+
+            let end_block = current_block + self.config.page_size - 1;
+            let block_range = BlockRange {
+                start: current_block,
+                end: end_block.min(max_block), // Ensure we don't exceed max_block
+            };
+
+            self.process_events_for_block_range(block_range).await?;
+
+            // Update current_block for the next iteration
+            let processed_block = self.store.get_processed_block();
+            if processed_block <= current_block {
+                // Ensure progress, or break the loop
+                break;
+            }
+            current_block = processed_block + 1;
+        }
+
+        Ok(())
+    }
+
+    fn check_for_contract(&mut self, event: &EventBase) {
+        let address = event.contract_address;
+        if self.updates.contracts.contains_key(&address)
+            || self.store.load_contract(address).is_some()
+        {
+            return;
+        }
+
+        self.updates
+            .contracts
+            .insert(address, TokenContract::from_event_base(event));
+    }
     async fn load_chain_data(&mut self, range: BlockRange) -> Result<HashMap<u64, BlockData>> {
         let block_info = match self.config.chain_data_source {
             ChainDataSource::Database => {
@@ -73,19 +116,6 @@ impl EventProcessor {
 
         self.updates.blocks.extend(block_info.clone().into_values());
         Ok(block_info)
-    }
-
-    fn check_for_contract(&mut self, event: &EventBase) {
-        let address = event.contract_address;
-        if self.updates.contracts.contains_key(&address)
-            || self.store.load_contract(address).is_some()
-        {
-            return;
-        }
-
-        self.updates
-            .contracts
-            .insert(address, TokenContract::from_event_base(event));
     }
 
     async fn get_missing_node_data(&mut self) {
@@ -127,7 +157,7 @@ impl EventProcessor {
         }
     }
 
-    pub async fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
+    async fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
         tracing::info!("processing events for {:?}", range);
         let event_map = self.source.get_events_for_block_range(range)?;
         let mut block_data = self.load_chain_data(range).await?;
@@ -191,6 +221,7 @@ mod tests {
             TEST_ETH_RPC,
             HandlerConfig {
                 chain_data_source: ChainDataSource::Database,
+                page_size: 10,
             },
         )
         .unwrap()
@@ -201,16 +232,26 @@ mod tests {
     #[traced_test]
     async fn event_processing() {
         let mut handler = test_processor();
-        let block = std::cmp::max(handler.store.get_max_block() + 1, 15_000_000);
+        let block = std::cmp::max(handler.store.get_processed_block() + 1, 15_000_000);
         let range = BlockRange {
             start: block,
             end: block + 100,
         };
         let result = handler.process_events_for_block_range(range).await;
         match result {
-            Ok(_) => assert_eq!(handler.store.get_max_block(), range.end - 1),
+            Ok(_) => assert_eq!(handler.store.get_processed_block(), range.end - 1),
             Err(err) => panic!("{}", err.to_string()),
         }
         // TODO - construct a sequence of events and actually check the Store State is as expected here.
+    }
+
+    #[tokio::test]
+    #[ignore]
+    #[traced_test]
+    async fn test_run() {
+        let mut handler = test_processor();
+        let start_from = std::cmp::max(handler.store.get_processed_block() + 1, 15_000_000);
+        let result = handler.run(start_from).await;
+        assert!(result.is_ok());
     }
 }
