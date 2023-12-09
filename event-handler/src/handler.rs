@@ -289,6 +289,7 @@ mod tests {
             HandlerConfig {
                 chain_data_source: ChainDataSource::Database,
                 page_size: 10,
+                fetch_metadata: false,
             },
         )
         .unwrap()

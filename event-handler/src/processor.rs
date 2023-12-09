@@ -196,7 +196,11 @@ impl EventProcessor {
             }
         }
         // Retrieve missing data from node.
-        self.get_missing_node_data().await;
+        match self.config.fetch_metadata {
+            true => self.get_missing_node_data().await,
+            // This is a placeholder for metadata retrieving invocation.
+            false => (),
+        }
 
         // Drain cache and write to store
         self.updates.write(&mut self.store).await;
@@ -221,7 +225,8 @@ mod tests {
             TEST_ETH_RPC,
             HandlerConfig {
                 chain_data_source: ChainDataSource::Database,
-                page_size: 10,
+                page_size: 10000,
+                fetch_metadata: false,
             },
         )
         .unwrap()
@@ -250,7 +255,7 @@ mod tests {
     #[traced_test]
     async fn test_run() {
         let mut handler = test_processor();
-        let start_from = std::cmp::max(handler.store.get_processed_block() + 1, 15_000_000);
+        let start_from = std::cmp::max(handler.store.get_processed_block() + 1, 0);
         let result = handler.run(start_from).await;
         assert!(result.is_ok());
     }
