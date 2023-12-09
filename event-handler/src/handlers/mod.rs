@@ -77,6 +77,8 @@ pub mod test_util {
             TEST_ETH_RPC,
             HandlerConfig {
                 chain_data_source: ChainDataSource::Database,
+                page_size: 10,
+                fetch_metadata: false,
             },
         )
         .unwrap()

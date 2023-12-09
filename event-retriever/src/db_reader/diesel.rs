@@ -46,6 +46,24 @@ impl EventSource {
         PgConnection::establish(db_url).context("Error connecting to Diesel Client")
     }
 
+    pub fn get_indexed_block(&mut self) -> i64 {
+        schema::_event_block::dsl::_event_block
+            .select(diesel::dsl::min(schema::_event_block::indexed))
+            .limit(1)
+            .get_result(&mut self.client)
+            .unwrap_or(Some(0))
+            .unwrap_or(0)
+    }
+
+    pub fn get_finalized_block(&mut self) -> i64 {
+        schema::_event_block::dsl::_event_block
+            .select(diesel::dsl::min(schema::_event_block::finalized))
+            .limit(1)
+            .get_result(&mut self.client)
+            .unwrap_or(Some(0))
+            .unwrap_or(0)
+    }
+
     pub fn get_blocks_for_range(&mut self, range: BlockRange) -> Result<HashMap<u64, BlockData>> {
         let blocks: Vec<Block> = schema::blocks::dsl::blocks
             .filter(schema::blocks::dsl::number.ge(&range.start))
