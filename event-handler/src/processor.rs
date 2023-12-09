@@ -1,6 +1,6 @@
 use crate::{
     config::{ChainDataSource, HandlerConfig},
-    handler::EventHandler,
+    handlers::EventHandler,
     update_cache::UpdateCache,
 };
 use anyhow::{Context, Result};
@@ -141,11 +141,11 @@ impl EventProcessor {
                 for NftEvent { base, meta } in tx_events.into_iter() {
                     self.check_for_contract(&base);
                     match meta {
-                        EventMeta::Erc721Approval(a) => self.handle_erc721_approval(base, a, tx),
-                        EventMeta::Erc721Transfer(t) => self.handle_erc721_transfer(base, t, tx),
+                        EventMeta::Erc721Approval(a) => self.handle_event(base, a, tx),
+                        EventMeta::Erc721Transfer(t) => self.handle_event(base, t, tx),
                         EventMeta::Erc1155TransferBatch(batch) => {
                             for (id, value) in batch.ids.into_iter().zip(batch.values.into_iter()) {
-                                self.handle_erc1155_transfer(
+                                self.handle_event(
                                     base,
                                     Erc1155TransferSingle {
                                         operator: batch.operator,
@@ -158,11 +158,9 @@ impl EventProcessor {
                                 )
                             }
                         }
-                        EventMeta::Erc1155TransferSingle(t) => {
-                            self.handle_erc1155_transfer(base, t, tx)
-                        }
-                        EventMeta::Erc1155Uri(e) => self.handle_erc1155_uri(base, e, tx),
-                        EventMeta::ApprovalForAll(a) => self.handle_approval_for_all(base, a, tx),
+                        EventMeta::Erc1155TransferSingle(t) => self.handle_event(base, t, tx),
+                        EventMeta::Erc1155Uri(e) => self.handle_event(base, e, tx),
+                        EventMeta::ApprovalForAll(a) => self.handle_event(base, a, tx),
                     };
                 }
             }
