@@ -4,7 +4,7 @@ DROP TABLE contract_abis;
 DROP TABLE erc1155_owners;
 DROP TABLE erc1155s;
 DROP TABLE nfts;
-DROP TABLE nft_metadata
+DROP TABLE nft_metadata;
 DROP TABLE token_contracts;
 DROP TABLE transactions;
 
