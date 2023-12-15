@@ -391,7 +391,7 @@ mod tests {
             Address::from_str("0x7A41E410BB784D9875FA14F2D7D2FA825466CDAE").unwrap();
         assert_eq!(
             eth_client
-                .get_contract_details(vec![ens_contract, bored_ape_contract, mla_field_agent])
+                .get_contract_details(&[ens_contract, bored_ape_contract, mla_field_agent])
                 .await,
             hashmap! {
                 ens_contract => ContractDetails{ name: None, symbol: None },
@@ -411,7 +411,7 @@ mod tests {
     async fn test_non_retryable_error() {
         let eth_client = test_client();
         let ens_contract = Address::from_str("0x57F1887A8BF19B14FC0DF6FD9B2ACC9AF147EA85").unwrap();
-        eth_client.get_contract_details(vec![ens_contract]).await;
+        eth_client.get_contract_details(&[ens_contract]).await;
 
         let warn_message = "Contract call reverted with message:";
         // Ensure that certain strings are or aren't logged
