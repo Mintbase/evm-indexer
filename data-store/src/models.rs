@@ -84,11 +84,11 @@ pub struct Nft {
     pub minter: Address,
     pub approved: Option<Vec<u8>>,
     // TODO - add content category / flag here.
+    //  https://github.com/Mintbase/evm-indexer/issues/23
 }
 
 impl Nft {
     pub fn new(base: &EventBase, nft_id: &NftId, tx: &TxDetails) -> Self {
-        // TODO - used non-trivial fields from base here (for block and tx index)
         Self {
             contract_address: nft_id.address,
             token_id: nft_id.token_id.into(),
@@ -100,11 +100,8 @@ impl Nft {
             last_transfer_block: None,
             last_transfer_tx: None,
             // Maybe its best if we set this when transfer comes from Zero.
-            mint_block: base.block_number.try_into().expect("i64 block_number"),
-            mint_tx: base
-                .transaction_index
-                .try_into()
-                .expect("i64 transaction_index"),
+            mint_block: base.block_number as i64,
+            mint_tx: base.transaction_index as i64,
             burn_block: None,
             burn_tx: None,
             minter: tx.from,
@@ -138,7 +135,7 @@ pub struct Erc1155 {
     /// Block when token was first minted (i.e. transfer from zero).
     pub mint_block: i64,
     /// Transaction index of first mint.
-    pub mint_tx: i64, // TODO - add content category / flag here.
+    pub mint_tx: i64,
     /// record keeping fields.
     pub last_update_block: i64,
     pub last_update_tx: i64,
@@ -147,11 +144,6 @@ pub struct Erc1155 {
 
 impl Erc1155 {
     pub fn new(base: &EventBase, nft_id: &NftId, tx: &TxDetails) -> Self {
-        let block = base.block_number.try_into().expect("i64 block_number");
-        let tx_index = base
-            .transaction_index
-            .try_into()
-            .expect("i64 transaction_index");
         Self {
             contract_address: nft_id.address,
             token_id: nft_id.token_id.into(),
@@ -160,8 +152,8 @@ impl Erc1155 {
             last_update_block: 0,
             last_update_tx: 0,
             last_update_log_index: 0,
-            mint_block: block,
-            mint_tx: tx_index,
+            mint_block: base.block_number as i64,
+            mint_tx: base.transaction_index as i64,
             creator_address: tx.from,
         }
     }
@@ -233,9 +225,11 @@ impl TokenContract {
             name: None,
             symbol: None,
             // assume that the first time a contract is seen is the created block
-            created_block: event.block_number.try_into().expect("u64 conversion"),
-            created_tx_index: event.transaction_index.try_into().expect("u64 conversion"),
-            // TODO - try-fetch from Node!
+            created_block: event.block_number as i64,
+            created_tx_index: event.transaction_index as i64,
+            // TODO - try-fetch from Node or Remove
+            //  (remove) https://github.com/Mintbase/evm-indexer/issues/101
+            //  (try-fetch) https://github.com/Mintbase/evm-indexer/issues/26
             base_uri: None,
         }
     }

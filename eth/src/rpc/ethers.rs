@@ -107,9 +107,6 @@ struct GetBlockReceipts {
 impl RetryGet<HashMap<u64, TxDetails>> for GetBlockReceipts {
     async fn try_get(&self) -> Result<HashMap<u64, TxDetails>> {
         let block = self.block;
-        // First try eth_getBlockReceipts
-        // This method is only supported by a few node providers: Erigon (e.g. QuickNode, Alchemy, Ankr).
-        // But not Infura for example
         let receipts = self.provider.get_block_receipts(block).await?;
         Ok(receipts
             .into_iter()
@@ -272,15 +269,6 @@ impl Client {
         .await
     }
 
-    pub async fn get_block_receipts(&self, block: u64) -> Result<HashMap<u64, TxDetails>> {
-        GetBlockReceipts {
-            provider: self.provider.clone(),
-            block,
-        }
-        .retry_get(3, 1)
-        .await
-    }
-
     pub async fn get_erc721_uri(&self, token: NftId) -> Result<String> {
         GetErc721Uri {
             provider: self.provider.clone(),
@@ -309,48 +297,12 @@ impl Client {
         .await
         .ok()
     }
-
-    pub async fn get_contract_details(&self, address: Address) -> ContractDetails {
-        ContractDetails {
-            // TODO - fetch these simultaneously!
-            name: self.get_name(address).await,
-            symbol: self.get_symbol(address).await,
-        }
-    }
-
-    pub async fn get_receipts_for_range(
-        &self,
-        start: u64,
-        end: u64,
-    ) -> Result<HashMap<u64, HashMap<u64, TxDetails>>> {
-        let range = start..end;
-
-        let futures = range
-            .clone()
-            .map(|block: u64| self.get_block_receipts(block));
-        Ok(range
-            .into_iter()
-            .zip(join_all(futures).await)
-            .map(|(block, result)| {
-                (
-                    block,
-                    match result {
-                        Ok(data) => data,
-                        Err(err) => {
-                            tracing::error!("Failed to get receipt for block {}: {:?}", block, err);
-                            panic!("Failed to get receipt for block {}: {:?}", block, err);
-                        }
-                    },
-                )
-            })
-            .collect())
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{Bytes32, U256};
+    use crate::types::U256;
     use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
     use maplit::hashmap;
     use std::str::FromStr;
@@ -360,26 +312,6 @@ mod tests {
 
     fn test_client() -> Client {
         Client::new(FREE_ETH_RPC).expect("Needed for test")
-    }
-
-    #[tokio::test]
-    async fn get_receipts_free() {
-        let eth_client = test_client();
-        assert_eq!(
-            eth_client.get_block_receipts(1_000_000).await.unwrap(),
-            hashmap! {
-                1 => TxDetails {
-                    hash: Bytes32::from_str("0xe9e91f1ee4b56c0df2e9f06c2b8c27c6076195a88a7b8537ba8313d80e6f124e").unwrap(),
-                    from: Address::from_str("0x32be343b94f860124dc4fee278fdcbd38c102d88").unwrap(),
-                    to: Some(Address::from_str("0xdf190dc7190dfba737d7777a163445b7fff16133").unwrap())
-                },
-                0 => TxDetails {
-                    hash: Bytes32::from_str("0xea1093d492a1dcb1bef708f771a99a96ff05dcab81ca76c31940300177fcf49f").unwrap(),
-                    from: Address::from_str("0x39fa8c5f2793459d6622857e7d9fbb4bd91766d3").unwrap(),
-                    to: Some(Address::from_str("0xc083e9947cf02b8ffc7d3090ae9aea72df98fd47").unwrap())
-                }
-            }
-        );
     }
 
     #[tokio::test]
@@ -405,15 +337,6 @@ mod tests {
             .await
             .unwrap()
             .is_none());
-    }
-
-    #[tokio::test]
-    #[ignore]
-    async fn get_many_receipts() {
-        let eth_client = test_client();
-        let result = eth_client.get_block_receipts(10_000_000).await;
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().keys().len(), 103);
     }
 
     #[tokio::test]
@@ -462,29 +385,24 @@ mod tests {
     async fn get_contract_details() {
         let eth_client = test_client();
         let ens_contract = Address::from_str("0x57F1887A8BF19B14FC0DF6FD9B2ACC9AF147EA85").unwrap();
-        assert_eq!(
-            eth_client.get_contract_details(ens_contract).await,
-            ContractDetails {
-                name: None,
-                symbol: None,
-            }
-        );
         let bored_ape_contract =
             Address::from_str("0x2EE6AF0DFF3A1CE3F7E3414C52C48FD50D73691E").unwrap();
-        assert_eq!(
-            eth_client.get_contract_details(bored_ape_contract).await,
-            ContractDetails {
-                name: Some("Bored Ape Yacht Club".to_string()),
-                symbol: Some("BAYC".to_string()),
-            }
-        );
         let mla_field_agent =
             Address::from_str("0x7A41E410BB784D9875FA14F2D7D2FA825466CDAE").unwrap();
         assert_eq!(
-            eth_client.get_contract_details(mla_field_agent).await,
-            ContractDetails {
-                name: Some("Meta Labs Field Agents".to_string()),
-                symbol: Some("MLA1".to_string()),
+            eth_client
+                .get_contract_details(vec![ens_contract, bored_ape_contract, mla_field_agent])
+                .await,
+            hashmap! {
+                ens_contract => ContractDetails{ name: None, symbol: None },
+                bored_ape_contract => ContractDetails {
+                    name: Some("Bored Ape Yacht Club".to_string()),
+                    symbol: Some("BAYC".to_string()),
+                },
+                mla_field_agent => ContractDetails {
+                    name: Some("Meta Labs Field Agents".to_string()),
+                    symbol: Some("MLA1".to_string()),
+                }
             }
         );
     }
@@ -493,7 +411,7 @@ mod tests {
     async fn test_non_retryable_error() {
         let eth_client = test_client();
         let ens_contract = Address::from_str("0x57F1887A8BF19B14FC0DF6FD9B2ACC9AF147EA85").unwrap();
-        eth_client.get_contract_details(ens_contract).await;
+        eth_client.get_contract_details(vec![ens_contract]).await;
 
         let warn_message = "Contract call reverted with message:";
         // Ensure that certain strings are or aren't logged

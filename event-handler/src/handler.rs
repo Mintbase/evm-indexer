@@ -85,16 +85,9 @@ impl EventHandler for EventProcessor {
             self.updates.nfts.insert(nft_id, nft);
             return;
         }
-        let EventBase {
-            block_number,
-            transaction_index,
-            log_index,
-            ..
-        } = base;
-        // TODO - Maybe we should just leave Event Base fields as i64...
-        let block = block_number.try_into().expect("i64 block");
-        let tx_index = transaction_index.try_into().expect("i64 tx_index");
-        let log_index = log_index.try_into().expect("i64 log index");
+        let block = base.block_number as i64;
+        let tx_index = base.transaction_index as i64;
+        let log_index = base.log_index as i64;
 
         if transfer.to == Address::zero() {
             // burn token
@@ -110,8 +103,6 @@ impl EventHandler for EventProcessor {
         nft.last_update_log_index = log_index;
         nft.last_transfer_block = Some(block);
         nft.last_transfer_tx = Some(tx_index);
-        // TODO - fetch and set json. Maybe in load_or_initialize
-        // Approvals are unset on transfer.
         nft.approved = None;
         self.updates.nfts.insert(nft_id, nft);
     }
@@ -206,16 +197,9 @@ impl EventHandler for EventProcessor {
             self.updates.approval_for_alls.insert(approval_id, approval);
             return;
         }
-        let EventBase {
-            block_number,
-            log_index,
-            ..
-        } = base;
-        let block = block_number.try_into().expect("i64 block");
-        let log_index = log_index.try_into().expect("i64 log index");
 
-        approval.last_update_block = block;
-        approval.last_update_log_index = log_index;
+        approval.last_update_block = base.block_number as i64;
+        approval.last_update_log_index = base.log_index as i64;
 
         approval.approved = event.approved;
         approval.operator = event.operator;
@@ -251,19 +235,10 @@ impl EventProcessor {
             self.updates.multi_tokens.insert(nft_id, token);
             return None;
         }
-        let EventBase {
-            block_number,
-            transaction_index,
-            log_index,
-            ..
-        } = base;
-        let block = block_number.try_into().expect("i64 block");
-        let tx_index = transaction_index.try_into().expect("i64 tx_index");
-        let log_index = log_index.try_into().expect("i64 log index");
-
-        token.last_update_block = block;
-        token.last_update_tx = tx_index;
-        token.last_update_log_index = log_index;
+        
+        token.last_update_block = base.block_number as i64;
+        token.last_update_tx = base.transaction_index as i64;
+        token.last_update_log_index = base.log_index as i64;
 
         Some(token)
     }

@@ -27,6 +27,7 @@ impl UpdateCache {
         // TODO - It would be ideal if all db actions happened in a single commit
         //  so that failure to write any one of them results in no changes at all.
         //  this can be done with @databases typescript library so it should be possible here.
+        //  https://github.com/Mintbase/evm-indexer/issues/106
 
         // Write and clear transactions
         db.save_transactions(std::mem::take(&mut self.transactions));

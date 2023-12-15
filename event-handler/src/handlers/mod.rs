@@ -25,10 +25,11 @@ impl EventProcessor {
             token_id: id,
         };
 
-        let mut token = match self.updates.multi_tokens.remove(&nft_id) {
-            Some(nft) => nft,
-            None => self.store.load_or_initialize_erc1155(&base, &nft_id, tx),
-        };
+        let mut token = self
+            .updates
+            .multi_tokens
+            .remove(&nft_id)
+            .unwrap_or_else(|| self.store.load_or_initialize_erc1155(&base, &nft_id, tx));
         if token.event_applied(&base) {
             tracing::warn!(
                 "skipping attempt to replay event {:?} at tx {:?} on {:?}",
@@ -40,19 +41,10 @@ impl EventProcessor {
             self.updates.multi_tokens.insert(nft_id, token);
             return None;
         }
-        let EventBase {
-            block_number,
-            transaction_index,
-            log_index,
-            ..
-        } = base;
-        let block = block_number.try_into().expect("i64 block");
-        let tx_index = transaction_index.try_into().expect("i64 tx_index");
-        let log_index = log_index.try_into().expect("i64 log index");
 
-        token.last_update_block = block;
-        token.last_update_tx = tx_index;
-        token.last_update_log_index = log_index;
+        token.last_update_block = base.block_number as i64;
+        token.last_update_tx = base.transaction_index as i64;
+        token.last_update_log_index = base.log_index as i64;
 
         Some(token)
     }
