@@ -133,8 +133,14 @@ impl EventProcessor {
                     // We can prevent this by perhaps by filtering also for range.start < mint_block
                     .filter(|(_, token)| token.token_uri.is_none())
                     .map(|(id, _)| id)
-                    .collect(),
-                self.updates.contracts.keys().copied().collect(),
+                    .collect::<Vec<_>>()
+                    .as_slice(),
+                self.updates
+                    .contracts
+                    .keys()
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .as_slice(),
             )
             .await;
         tracing::info!(
@@ -197,10 +203,14 @@ impl EventProcessor {
                 }
             }
         }
+        // TODO (Once we have metadata-retrieval)
+        //  this will have to happen AFTER updates.
+        //  The service expects records to exist attempting to update.
         // Retrieve missing data from node.
         match self.config.fetch_metadata {
             true => self.get_missing_node_data().await,
             // This is a placeholder for metadata retrieving invocation.
+            // Make pubsub post here.
             false => (),
         }
 
@@ -227,7 +237,7 @@ mod tests {
             TEST_ETH_RPC,
             HandlerConfig {
                 chain_data_source: ChainDataSource::Database,
-                page_size: 10000,
+                page_size: 100,
                 fetch_metadata: false,
             },
         )
@@ -235,14 +245,13 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
     #[traced_test]
     async fn event_processing() {
         let mut handler = test_processor();
         let block = std::cmp::max(handler.store.get_processed_block() + 1, 15_000_000);
         let range = BlockRange {
             start: block,
-            end: block + 100,
+            end: block + 5,
         };
         let result = handler.process_events_for_block_range(range).await;
         match result {
@@ -252,11 +261,11 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore]
+    #[ignore = "end-to-end test"]
     #[traced_test]
     async fn test_run() {
         let mut handler = test_processor();
-        let start_from = std::cmp::max(handler.store.get_processed_block() + 1, 0);
+        let start_from = std::cmp::max(handler.store.get_processed_block() + 1, 15_000_000);
         let result = handler.run(start_from).await;
         assert!(result.is_ok());
     }
