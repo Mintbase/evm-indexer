@@ -4,6 +4,7 @@ use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
 use diesel::{AsChangeset, Insertable, Queryable, Selectable};
 use eth::types::{Address, BlockData, Bytes32, NftId, TxDetails, U256};
 use event_retriever::db_reader::models::{ApprovalForAll as ApprovalEvent, EventBase};
+use keccak_hash::keccak;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -53,7 +54,7 @@ impl ApprovalForAll {
     }
 }
 
-#[derive(Queryable, Selectable, Insertable, Serialize, Debug, Clone)]
+#[derive(Queryable, Selectable, Insertable, Serialize, Debug, Clone, PartialEq)]
 #[diesel(table_name = contract_abis)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ContractAbi {
@@ -62,14 +63,27 @@ pub struct ContractAbi {
     pub abi: Option<Value>,
 }
 
-#[derive(Queryable, Selectable, Insertable, Serialize, Debug, Clone)]
+#[derive(Queryable, Selectable, Insertable, Serialize, Debug, Clone, PartialEq)]
 #[diesel(table_name = nft_metadata)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NftMetadata {
     #[diesel(serialize_as = Vec<u8>)]
-    pub address: Address,
-    pub token_id: BigDecimal,
-    pub json: Option<Value>,
+    pub uid: Bytes32,
+    pub json: Value,
+}
+
+/// Evalutes the keccak hash of serde_json::Value
+fn doc_hash(value: &Value) -> Bytes32 {
+    Bytes32::from(keccak(value.to_string().as_bytes()).0)
+}
+
+impl NftMetadata {
+    pub fn from(content: Value) -> Self {
+        Self {
+            uid: doc_hash(&content),
+            json: content,
+        }
+    }
 }
 
 #[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone, Serialize)]
@@ -82,6 +96,8 @@ pub struct Nft {
     pub token_uri: Option<String>,
     #[diesel(serialize_as = Vec<u8>)]
     pub owner: Address,
+    /// The keccak hash of the raw document.
+    pub metadata_id: Option<Vec<u8>>,
     pub last_update_block: i64,
     pub last_update_tx: i64,
     pub last_update_log_index: i64,
@@ -105,6 +121,7 @@ impl Nft {
             token_id: nft_id.token_id.into(),
             token_uri: None,
             owner: Address::zero(),
+            metadata_id: None,
             last_update_block: 0,
             last_update_tx: 0,
             last_update_log_index: 0,
@@ -143,6 +160,8 @@ pub struct Erc1155 {
     /// Address of first minter.
     #[diesel(serialize_as = Vec<u8>)]
     pub creator_address: Address,
+    /// The keccak hash of the raw document.
+    pub metadata_id: Option<Vec<u8>>,
     /// Block when token was first minted (i.e. transfer from zero).
     pub mint_block: i64,
     /// Transaction index of first mint.
@@ -160,6 +179,7 @@ impl Erc1155 {
             token_id: nft_id.token_id.into(),
             token_uri: None,
             total_supply: BigDecimal::zero(),
+            metadata_id: None,
             last_update_block: 0,
             last_update_tx: 0,
             last_update_log_index: 0,
@@ -290,6 +310,8 @@ impl Block {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
     use eth::types::{Bytes32, U256};
 
@@ -343,6 +365,7 @@ mod tests {
                 token_id: nft_id.token_id.into(),
                 token_uri: None,
                 owner: Address::zero(),
+                metadata_id: None,
                 last_update_block: 0,
                 last_update_tx: 0,
                 last_update_log_index: 0,
@@ -378,5 +401,15 @@ mod tests {
             transaction_index: 0,
             contract_address
         }));
+    }
+
+    #[test]
+    fn document_hash() {
+        let document = serde_json::json!("My JSON document!");
+        assert_eq!(
+            doc_hash(&document),
+            Bytes32::from_str("0x657fdc1e2d28600a3951bb0b06f4a9672311ca0a4faffae1f2b5904d8b38f12f")
+                .unwrap()
+        )
     }
 }

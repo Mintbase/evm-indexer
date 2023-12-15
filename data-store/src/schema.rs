@@ -34,10 +34,9 @@ diesel::table! {
 }
 
 diesel::table! {
-    nft_metadata (address, token_id) {
-        address -> Bytea,
-        token_id -> Numeric,
-        json -> Nullable<Jsonb>,
+    nft_metadata (uid) {
+        uid -> Bytea,
+        json -> Jsonb,
     }
 }
 
@@ -47,6 +46,7 @@ diesel::table! {
         token_id -> Numeric,
         token_uri -> Nullable<Text>,
         owner -> Bytea,
+        metadata_id -> Nullable<Bytea>,
         last_update_block -> Int8,
         last_update_tx -> Int8,
         last_update_log_index -> Int8,
@@ -104,6 +104,7 @@ diesel::table! {
         token_uri -> Nullable<Text>,
         total_supply -> Numeric,
         creator_address -> Bytea,
+        metadata_id -> Nullable<Bytea>,
         mint_block -> Int8,
         mint_tx -> Int8,
         last_update_block -> Int8,

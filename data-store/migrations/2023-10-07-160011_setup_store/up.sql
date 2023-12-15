@@ -34,10 +34,8 @@ CREATE TABLE contract_abis
 
 CREATE TABLE nft_metadata
 (
-    address  bytea          not null,
-    token_id numeric(78, 0) not null,
-    json      jsonb,
-    primary key (address, token_id)
+    uid  bytea primary key,
+    json jsonb not null
 );
 
 CREATE TABLE nfts
@@ -46,6 +44,7 @@ CREATE TABLE nfts
     token_id              numeric(78, 0) not null,
     token_uri             text,
     owner                 bytea          not null,
+    metadata_id           bytea,
     last_update_block     int8           not null,
     last_update_tx        int8           not null,
     last_update_log_index int8           not null,
@@ -60,6 +59,8 @@ CREATE TABLE nfts
     approved              bytea,
     primary key (contract_address, token_id)
 );
+
+CREATE INDEX nfts_metadata_ind ON nfts (metadata_id);
 
 CREATE TABLE approval_for_all
 (
@@ -87,6 +88,7 @@ CREATE TABLE erc1155s
     token_uri             text,
     total_supply          numeric(78, 0) not null,
     creator_address       bytea,
+    metadata_id           bytea,
     mint_block            int8           not null,
     mint_tx               int8           not null,
     last_update_block     int8           not null,
@@ -95,6 +97,8 @@ CREATE TABLE erc1155s
     PRIMARY KEY (contract_address, token_id),
     FOREIGN KEY (contract_address) REFERENCES token_contracts (address)
 );
+
+CREATE INDEX erc1155_metadata_ind ON nfts (metadata_id);
 
 CREATE TABLE erc1155_owners
 (

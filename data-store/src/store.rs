@@ -65,49 +65,54 @@ impl DataStore {
         self.pool.get().expect("failed to get connection from pool")
     }
 
-    pub fn insert_metadata(&mut self, token: &NftId, content: Option<Value>) {
-        let record = NftMetadata {
-            address: token.address,
-            token_id: token.token_id.into(),
-            json: content,
-        };
+    pub fn insert_metadata(&mut self, token: &NftId, content: Value) {
+        let record = NftMetadata::from(content);
+        let uid = record.uid;
+
         let result = diesel::insert_into(nft_metadata::dsl::nft_metadata)
             .values(record)
-            .on_conflict((nft_metadata::address, nft_metadata::token_id))
+            .on_conflict(nft_metadata::uid)
             .do_nothing()
             .execute(&mut self.get_connection());
+
+        // one of the following two tables will be updated (depending on token type.)
+        update(nfts::dsl::nfts)
+            .set(nfts::metadata_id.eq::<Vec<u8>>(uid.into()))
+            .filter(nfts::contract_address.eq(&token.db_address()))
+            .filter(nfts::token_id.eq(&token.db_token_id()))
+            .execute(&mut self.get_connection())
+            .expect("Failed to execute nft update");
+        update(erc1155s::dsl::erc1155s)
+            .set(erc1155s::metadata_id.eq::<Vec<u8>>(uid.into()))
+            .filter(erc1155s::contract_address.eq(&token.db_address()))
+            .filter(erc1155s::token_id.eq(&token.db_token_id()))
+            .execute(&mut self.get_connection())
+            .expect("Failed to execute erc1155 update");
         handle_insert_result(result, 1, format!("insert_metadata: {}", token))
     }
 
     pub fn insert_uri(&mut self, token: &NftId, uri: Option<String>) {
-        // TODO - something more symmetric!
         // Try Erc721:
-        let updates = update(nfts::dsl::nfts)
+        update(nfts::dsl::nfts)
             .set(nfts::token_uri.eq(uri.clone()))
             .filter(nfts::contract_address.eq(&token.db_address()))
             .filter(nfts::token_id.eq(&token.db_token_id()))
             .execute(&mut self.get_connection())
             .expect("Failed to execute nft update");
-        if updates == 0 {
-            // Try Erc1155
-            let updates = update(erc1155s::dsl::erc1155s)
-                .set(erc1155s::token_uri.eq(uri.clone()))
-                .filter(erc1155s::contract_address.eq(&token.db_address()))
-                .filter(erc1155s::token_id.eq(&token.db_token_id()))
-                .execute(&mut self.get_connection())
-                .expect("Failed to execute erc1155 update");
-            if updates == 0 {
-                tracing::error!("No update happened for {token:?} - Uri: {uri:?}");
-            }
-        }
+        // Try Erc1155
+        update(erc1155s::dsl::erc1155s)
+            .set(erc1155s::token_uri.eq(uri.clone()))
+            .filter(erc1155s::contract_address.eq(&token.db_address()))
+            .filter(erc1155s::token_id.eq(&token.db_token_id()))
+            .execute(&mut self.get_connection())
+            .expect("Failed to execute erc1155 update");
     }
 
-    pub fn add_contract_details(
+    pub fn insert_contract_details(
         &mut self,
         address: Address,
         name: Option<String>,
         symbol: Option<String>,
-        // TODO - add base_uri here.
     ) {
         update(token_contracts::dsl::token_contracts)
             .set((
@@ -685,5 +690,109 @@ mod tests {
         assert!(store.load_contract(base.contract_address).is_none());
         store.save_contract(contract);
         assert!(store.load_contract(base.contract_address).is_some());
+    }
+
+    fn setup_store_with_nft() -> (DataStore, NftId, NftId) {
+        let mut store = get_new_store();
+        let mut base = test_event_base();
+        let erc721_id = NftId {
+            address: base.contract_address,
+            token_id: U256::from(123),
+        };
+        let erc1155_id = NftId {
+            address: base.contract_address,
+            token_id: U256::from(456789),
+        };
+        let tx = TxDetails {
+            hash: Bytes32::from(1),
+            from: Address::from(1),
+            to: Some(Address::from(2)),
+        };
+        // We have to add the contract because of the Foreign Key constraint Erc1155 >- Contracts.
+        store.save_contract(TokenContract::from_event_base(&base));
+
+        let nft = Nft::new(&base, &erc721_id, &tx);
+        base.block_number += 1;
+        let erc1155 = Erc1155::new(&base, &erc1155_id, &tx);
+        store.save_nft(nft.clone());
+        DataStore::upsert_erc1155(&mut store.get_connection(), erc1155.clone());
+        (store, erc721_id, erc1155_id)
+    }
+
+    #[test]
+    fn insert_metadata() {
+        // Setup:
+        let (mut store, token_id, _) = setup_store_with_nft();
+
+        // Token has no metadata yet.
+        assert!(store.load_nft(&token_id).unwrap().metadata_id.is_none());
+        // content
+        let content = serde_json::json!("My JSON document!");
+        store.insert_metadata(&token_id, content.clone());
+
+        let token = store.load_nft(&token_id).unwrap();
+        assert!(token.metadata_id.is_some());
+
+        let result = nft_metadata::table
+            .filter(nft_metadata::uid.eq::<Vec<u8>>(token.metadata_id.unwrap()))
+            .load::<NftMetadata>(&mut store.get_connection())
+            .unwrap();
+        assert_eq!(result, [NftMetadata::from(content)]);
+    }
+
+    #[test]
+    fn insert_token_uri() {
+        // Setup:
+        let (mut store, erc721_id, erc1155_id) = setup_store_with_nft();
+
+        // Token has no uri yet.
+        assert!(store.load_nft(&erc721_id).unwrap().token_uri.is_none());
+        let uri = Some("string".to_string());
+        store.insert_uri(&erc721_id, uri.clone());
+        assert_eq!(store.load_nft(&erc721_id).unwrap().token_uri, uri);
+        assert!(store.load_erc1155(&erc1155_id).unwrap().token_uri.is_none());
+        store.insert_uri(&erc1155_id, uri.clone());
+        assert_eq!(store.load_erc1155(&erc1155_id).unwrap().token_uri, uri);
+    }
+
+    #[test]
+    fn add_contract_details() {
+        // Setup -- adds the contract.
+        let (mut store, token_id, _) = setup_store_with_nft();
+        let contract = store.load_contract(token_id.address).unwrap();
+        assert!(contract.name.is_none());
+        assert!(contract.symbol.is_none());
+
+        let name = Some("Name".to_string());
+        let symbol = Some("Symbol".to_string());
+        store.insert_contract_details(token_id.address, name.clone(), symbol.clone());
+
+        let contract = store.load_contract(token_id.address).unwrap();
+        assert_eq!(contract.name, name);
+        assert_eq!(contract.symbol, symbol);
+    }
+
+    #[test]
+    fn add_contract_abi() {
+        let mut store = get_new_store();
+        let address = Address::zero();
+
+        let before = contract_abis::table
+            .filter(contract_abis::address.eq::<Vec<u8>>(address.into()))
+            .load::<ContractAbi>(&mut store.get_connection())
+            .unwrap();
+        assert!(before.is_empty());
+
+        let contract_abi = ContractAbi {
+            address,
+            abi: Some(serde_json::json!("Ultimate ABI")),
+        };
+        store.insert_contract_abi(contract_abi.clone());
+
+        let after = contract_abis::table
+            .filter(contract_abis::address.eq::<Vec<u8>>(address.into()))
+            .load::<ContractAbi>(&mut store.get_connection())
+            .unwrap();
+        assert_eq!(after, [contract_abi]);
     }
 }
