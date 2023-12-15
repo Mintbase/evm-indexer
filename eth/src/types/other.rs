@@ -28,7 +28,7 @@ pub struct NftId {
 
 impl Display for NftId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}/{}", self.address.0, self.token_id.0)
+        write!(f, "{}/{}", self.address.0, self.token_id.0)
     }
 }
 

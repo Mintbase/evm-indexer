@@ -68,9 +68,9 @@ impl EthNodeReading for Client {
             .collect())
     }
 
-    async fn get_uris(&self, token_ids: Vec<NftId>) -> HashMap<NftId, Option<String>> {
+    async fn get_uris(&self, token_ids: &[NftId]) -> HashMap<NftId, Option<String>> {
         tracing::info!("Preparing {} tokenUri Requests", token_ids.len());
-        let futures = token_ids.clone().into_iter().map(|token| {
+        let futures = token_ids.iter().map(|token| {
             self.provider
                 .call(eth::Call, (Self::uri_call(token), BlockId::default()))
         });
@@ -78,9 +78,9 @@ impl EthNodeReading for Client {
         let uri_results = join_all(futures).await;
 
         token_ids
-            .into_iter()
+            .iter()
             .zip(uri_results)
-            .map(|(id, uri_result)| {
+            .map(|(&id, uri_result)| {
                 let uri = match uri_result {
                     Ok(bytes) => Self::decode_function_result_string(bytes, TOKEN_URI),
                     Err(err) => {
@@ -95,7 +95,7 @@ impl EthNodeReading for Client {
 
     async fn get_contract_details(
         &self,
-        addresses: Vec<Address>,
+        addresses: &[Address],
     ) -> HashMap<Address, ContractDetails> {
         tracing::debug!("Preparing {} Contract Details Requests", addresses.len());
         let name_futures = addresses.iter().cloned().map(|addr| {
@@ -112,9 +112,9 @@ impl EthNodeReading for Client {
         tracing::debug!("Complete {} Contract Details Requests", addresses.len());
 
         addresses
-            .into_iter()
+            .iter()
             .zip(names.into_iter().zip(symbols))
-            .map(|(address, (name_result, symbol_result))| {
+            .map(|(&address, (name_result, symbol_result))| {
                 let name = match name_result {
                     Ok(name) => Self::decode_function_result_string(name, NAME),
                     Err(err) => {
@@ -149,7 +149,7 @@ impl Client {
         (oks, errors)
     }
 
-    fn uri_call(token: NftId) -> TransactionCall {
+    fn uri_call(token: &NftId) -> TransactionCall {
         TransactionCall {
             to: Some(token.address.0),
             input: Some(TOKEN_URI.encode_params(&(token.token_id.0,))),
@@ -222,7 +222,7 @@ mod tests {
         ]
         .map(|s| Address::from_str(s).unwrap())
         .to_vec();
-        let details = eth_client.get_contract_details(addresses.clone()).await;
+        let details = eth_client.get_contract_details(&addresses).await;
 
         let expected = addresses
             .into_iter()
@@ -301,7 +301,7 @@ mod tests {
         };
         let token_ids = [ens_token, bored_ape, mla_field_agent, null_bytes];
 
-        let uris = eth_client.get_uris(token_ids.into_iter().collect()).await;
+        let uris = eth_client.get_uris(&token_ids).await;
 
         assert_eq!(
             uris,

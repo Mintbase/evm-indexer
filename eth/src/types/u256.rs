@@ -9,11 +9,17 @@ use diesel::{
 };
 use ethrpc::types::U256 as Uint256;
 use serde::{de, Deserialize, Deserializer, Serialize};
-use std::{num::ParseIntError, str::FromStr};
+use std::{fmt::Display, num::ParseIntError, str::FromStr};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, SqlType, Hash)]
 #[diesel(postgres_type(name = "U256"))]
 pub struct U256(pub Uint256);
+
+impl Display for U256 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 impl FromSql<Numeric, Pg> for U256 {
     fn from_sql(bytes: PgValue<'_>) -> deserialize::Result<Self> {
@@ -130,7 +136,6 @@ mod tests {
     fn u256_deserialization() {
         let number = U256::from(1);
         let string = serde_json::to_string(&number).expect("Failed to serialize to JSON");
-        println!("Number {:?}, String {}", number, string);
         let deserialized_number: U256 =
             serde_json::from_str(&string).expect("Failed to deserialize from JSON");
         assert_eq!(number, deserialized_number);

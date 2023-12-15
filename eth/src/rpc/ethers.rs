@@ -182,7 +182,7 @@ pub struct Client {
 impl EthNodeReading for Client {
     async fn get_contract_details(
         &self,
-        addresses: Vec<Address>,
+        addresses: &[Address],
     ) -> HashMap<Address, ContractDetails> {
         tracing::debug!("Preparing {} Contract Details Requests", addresses.len());
         let name_futures = addresses.iter().cloned().map(|a| self.get_name(a));
@@ -192,13 +192,13 @@ impl EthNodeReading for Client {
         tracing::debug!("Complete {} Contract Details Requests", addresses.len());
 
         addresses
-            .into_iter()
+            .iter()
             .zip(names.into_iter().zip(symbols))
-            .map(|(address, (name, symbol))| (address, ContractDetails { name, symbol }))
+            .map(|(&address, (name, symbol))| (address, ContractDetails { name, symbol }))
             .collect()
     }
 
-    async fn get_uris(&self, token_ids: Vec<NftId>) -> HashMap<NftId, Option<String>> {
+    async fn get_uris(&self, token_ids: &[NftId]) -> HashMap<NftId, Option<String>> {
         tracing::info!("Preparing {} tokenUri Requests", token_ids.len());
         let futures = token_ids
             .iter()
@@ -208,9 +208,9 @@ impl EthNodeReading for Client {
         let uris = join_all(futures).await;
 
         token_ids
-            .into_iter()
+            .iter()
             .zip(uris)
-            .map(|(id, uri_result)| {
+            .map(|(&id, uri_result)| {
                 (
                     id,
                     match uri_result {
