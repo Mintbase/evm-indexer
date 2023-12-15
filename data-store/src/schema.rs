@@ -34,6 +34,14 @@ diesel::table! {
 }
 
 diesel::table! {
+    nft_metadata (address, token_id) {
+        address -> Bytea,
+        token_id -> Numeric,
+        json -> Nullable<Jsonb>,
+    }
+}
+
+diesel::table! {
     nfts (contract_address, token_id) {
         contract_address -> Bytea,
         token_id -> Numeric,

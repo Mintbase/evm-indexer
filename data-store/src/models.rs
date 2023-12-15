@@ -53,12 +53,23 @@ impl ApprovalForAll {
     }
 }
 
-#[derive(Queryable, Selectable, Insertable, Serialize, Debug)]
+#[derive(Queryable, Selectable, Insertable, Serialize, Debug, Clone)]
 #[diesel(table_name = contract_abis)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ContractAbi {
-    address: Address,
-    abi: Option<Value>,
+    #[diesel(serialize_as = Vec<u8>)]
+    pub address: Address,
+    pub abi: Option<Value>,
+}
+
+#[derive(Queryable, Selectable, Insertable, Serialize, Debug, Clone)]
+#[diesel(table_name = nft_metadata)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct NftMetadata {
+    #[diesel(serialize_as = Vec<u8>)]
+    pub address: Address,
+    pub token_id: BigDecimal,
+    pub json: Option<Value>,
 }
 
 #[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone, Serialize)]

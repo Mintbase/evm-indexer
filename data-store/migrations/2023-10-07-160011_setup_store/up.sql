@@ -32,6 +32,14 @@ CREATE TABLE contract_abis
     abi     jsonb
 );
 
+CREATE TABLE nft_metadata
+(
+    address  bytea          not null,
+    token_id numeric(78, 0) not null,
+    json      jsonb,
+    primary key (address, token_id)
+);
+
 CREATE TABLE nfts
 (
     contract_address      bytea          not null,
