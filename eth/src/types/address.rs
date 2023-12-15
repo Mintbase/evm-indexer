@@ -10,11 +10,20 @@ use diesel::{
 use ethrpc::types::Address as H160;
 use serde::{Deserialize, Serialize};
 use solabi::ethprim::ParseAddressError;
-use std::{fmt::Debug, str::FromStr};
+use std::{
+    fmt::{Debug, Display},
+    str::FromStr,
+};
 
 /// An address. Can be an EOA or a smart contract address.
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SqlType, Deserialize)]
 pub struct Address(pub H160);
+
+impl Display for Address {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 impl Debug for Address {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
