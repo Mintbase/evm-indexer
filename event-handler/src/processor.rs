@@ -47,7 +47,8 @@ impl EventProcessor {
     pub async fn run(&mut self, start_from: i64) -> Result<()> {
         let mut current_block = start_from;
         loop {
-            // TODO - eventually replace with get_indexed_block (finalized is safer)
+            // TODO - (after reorg handling) Replace with get_indexed_block (finalized is safe)
+            //  https://github.com/Mintbase/evm-indexer/issues/104
             let max_block = self.source.get_finalized_block();
 
             if current_block >= max_block {
@@ -119,7 +120,8 @@ impl EventProcessor {
     }
 
     async fn get_missing_node_data(&mut self) {
-        // TODO - this will eventually be replaced by metadata-retriever.
+        // TODO - (after metadata-retrieving) this functionality will be replaced by metadata-retriever.
+        //  https://github.com/Mintbase/evm-indexer/issues/105
         let (mut missing_uris, mut contract_details) = self
             .eth_client
             .get_uris_and_contract_details(
@@ -247,7 +249,6 @@ mod tests {
             Ok(_) => assert_eq!(handler.store.get_processed_block(), range.end - 1),
             Err(err) => panic!("{}", err.to_string()),
         }
-        // TODO - construct a sequence of events and actually check the Store State is as expected here.
     }
 
     #[tokio::test]

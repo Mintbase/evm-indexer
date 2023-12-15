@@ -107,9 +107,8 @@ impl DataStore {
     }
 
     pub fn get_processed_block(&mut self) -> i64 {
-        // TODO - currently we "naively use" the max block in the store
-        //  (since these are written at the end of each run-loop)
-        //  Eventually we will want to be more dynamic (to capture new/unprocessed events)
+        // TODO - use more sophisticated reasoning here:
+        //  https://github.com/Mintbase/evm-indexer/issues/102
         blocks::dsl::blocks
             .select(diesel::dsl::max(blocks::number))
             .limit(1)

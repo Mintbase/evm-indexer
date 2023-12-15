@@ -26,16 +26,9 @@ impl EventHandler<ApprovalForAll> for EventProcessor {
             self.updates.approval_for_alls.insert(approval_id, approval);
             return;
         }
-        let EventBase {
-            block_number,
-            log_index,
-            ..
-        } = base;
-        let block = block_number.try_into().expect("i64 block");
-        let log_index = log_index.try_into().expect("i64 log index");
 
-        approval.last_update_block = block;
-        approval.last_update_log_index = log_index;
+        approval.last_update_block = base.block_number as i64;
+        approval.last_update_log_index = base.log_index as i64;
 
         approval.approved = event.approved;
         approval.operator = event.operator;
