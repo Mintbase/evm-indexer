@@ -81,6 +81,7 @@ impl From<ethers::types::Transaction> for TxDetails {
 
 #[derive(PartialEq, Debug)]
 pub struct ContractDetails {
+    pub address: Address,
     pub name: Option<String>,
     pub symbol: Option<String>,
 }

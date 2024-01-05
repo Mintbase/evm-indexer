@@ -129,7 +129,14 @@ impl EthNodeReading for Client {
                         None
                     }
                 };
-                (address, ContractDetails { name, symbol })
+                (
+                    address,
+                    ContractDetails {
+                        address,
+                        name,
+                        symbol,
+                    },
+                )
             })
             .collect()
     }
@@ -222,48 +229,59 @@ mod tests {
         ]
         .map(|s| Address::from_str(s).unwrap())
         .to_vec();
-        let details = eth_client.get_contract_details(&addresses).await;
+        let details = eth_client.get_contract_details(&addresses.clone()).await;
 
         let expected = addresses
+            .clone()
             .into_iter()
             .zip([
                 ContractDetails {
+                    address: addresses[0],
                     name: Some("Hero".into()),
                     symbol: Some("HERO".into()),
                 },
                 ContractDetails {
+                    address: addresses[1],
                     name: Some("Zora API Genesis Hackathon".into()),
                     symbol: Some("ZRPG".into()),
                 },
                 ContractDetails {
+                    address: addresses[2],
                     name: Some("BoredApeKennelClub".into()),
                     symbol: Some("BAKC".into()),
                 },
                 ContractDetails {
+                    address: addresses[3],
                     name: Some("kai".into()),
                     symbol: Some("KAI".into()),
                 },
                 ContractDetails {
+                    address: addresses[4],
                     name: Some("CrashTestJoyride".into()),
                     symbol: Some("CTJR".into()),
                 },
                 ContractDetails {
+                    address: addresses[5],
                     name: Some("Illuminati".into()),
                     symbol: Some("Truth".into()),
                 },
                 ContractDetails {
+                    address: addresses[6],
                     name: Some("Light Baths: Waves".into()),
                     symbol: Some("LIGHTWAV".into()),
                 },
                 ContractDetails {
+                    address: addresses[7],
                     name: Some("White Rabbit Producer Pass".into()),
                     symbol: Some("WRPP".into()),
                 },
                 ContractDetails {
+                    address: addresses[8],
                     name: Some("Zombie Zebras Comic Issue 2 Cover".into()),
                     symbol: Some("ZZC02C".into()),
                 },
                 ContractDetails {
+                    address: addresses[9],
                     name: Some("Flower Fam".into()),
                     symbol: Some("FF".into()),
                 },
