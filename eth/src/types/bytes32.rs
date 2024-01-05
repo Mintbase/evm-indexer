@@ -8,11 +8,28 @@ use diesel::{
 use ethrpc::types::Digest as H256;
 use serde::Serialize;
 use solabi::ethprim::ParseDigestError;
-use std::str::FromStr;
+use std::{
+    fmt::{Debug, Display},
+    str::FromStr,
+};
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SqlType)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SqlType)]
 #[diesel(postgres_type(name = "Bytes32"))]
 pub struct Bytes32(pub H256);
+
+impl Display for Bytes32 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl Debug for Bytes32 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Bytes32")
+            .field(&format_args!("{}", self.0))
+            .finish()
+    }
+}
 
 impl Serialize for Bytes32 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

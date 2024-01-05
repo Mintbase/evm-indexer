@@ -555,6 +555,7 @@ dependencies = [
  "eth",
  "event-retriever",
  "futures",
+ "keccak-hash",
  "scheduled-thread-pool",
  "serde",
  "serde_json",
@@ -1854,6 +1855,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f6d5ed8676d904364de097082f4e7d240b571b67989ced0240f08b7f966f940"
 dependencies = [
  "cpufeatures",
+]
+
+[[package]]
+name = "keccak-hash"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b286e6b663fb926e1eeb68528e69cb70ed46c6d65871a21b2215ae8154c6d3c"
+dependencies = [
+ "primitive-types",
+ "tiny-keccak",
 ]
 
 [[package]]
