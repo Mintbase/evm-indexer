@@ -72,7 +72,7 @@ pub struct NftMetadata {
     pub json: Value,
 }
 
-/// Evalutes the keccak hash of serde_json::Value
+/// Evaluates the keccak hash of serde_json::Value
 fn doc_hash(value: &Value) -> Bytes32 {
     Bytes32::from(keccak(value.to_string().as_bytes()).0)
 }
