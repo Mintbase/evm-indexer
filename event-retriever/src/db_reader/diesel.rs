@@ -84,9 +84,7 @@ impl EventSource {
                     TxDetails {
                         hash: tx.hash,
                         from: tx.from,
-                        to: tx
-                            .to
-                            .map(|address| Address::try_from(address).expect("parse Address")),
+                        to: tx.to.map(Address::from),
                     },
                 );
         }
