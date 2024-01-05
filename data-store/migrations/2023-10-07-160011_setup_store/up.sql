@@ -98,7 +98,7 @@ CREATE TABLE erc1155s
     FOREIGN KEY (contract_address) REFERENCES token_contracts (address)
 );
 
-CREATE INDEX erc1155_metadata_ind ON nfts (metadata_id);
+CREATE INDEX erc1155_metadata_ind ON erc1155s (metadata_id);
 
 CREATE TABLE erc1155_owners
 (
