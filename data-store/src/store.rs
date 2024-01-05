@@ -8,7 +8,7 @@ use diesel::{
     r2d2::{ConnectionManager, Pool, PooledConnection},
     update, RunQueryDsl,
 };
-use eth::types::{Address, BlockData, NftId, TxDetails};
+use eth::types::{Address, BlockData, ContractDetails, NftId, TxDetails};
 use event_retriever::db_reader::models::EventBase;
 use scheduled_thread_pool::ScheduledThreadPool;
 use serde_json::Value;
@@ -91,6 +91,40 @@ impl DataStore {
         handle_insert_result(result, 1, format!("insert_metadata: {}", token))
     }
 
+    pub fn insert_metadata_batch(&mut self, updates: &[(NftId, Value)]) {
+        let mut conn = self.get_connection();
+
+        conn.transaction::<_, diesel::result::Error, _>(|_| {
+            for (token, content) in updates {
+                let record = NftMetadata::from(content.clone());
+                let uid = record.uid;
+
+                let result = diesel::insert_into(nft_metadata::dsl::nft_metadata)
+                    .values(record)
+                    .on_conflict(nft_metadata::uid)
+                    .do_nothing()
+                    .execute(&mut self.get_connection());
+
+                // one of the following two tables will be updated (depending on token type.)
+                update(nfts::dsl::nfts)
+                    .set(nfts::metadata_id.eq::<Vec<u8>>(uid.into()))
+                    .filter(nfts::contract_address.eq(&token.db_address()))
+                    .filter(nfts::token_id.eq(&token.db_token_id()))
+                    .execute(&mut self.get_connection())
+                    .expect("Failed to execute nft update");
+                update(erc1155s::dsl::erc1155s)
+                    .set(erc1155s::metadata_id.eq::<Vec<u8>>(uid.into()))
+                    .filter(erc1155s::contract_address.eq(&token.db_address()))
+                    .filter(erc1155s::token_id.eq(&token.db_token_id()))
+                    .execute(&mut self.get_connection())
+                    .expect("Failed to execute erc1155 update");
+                handle_insert_result(result, 1, format!("insert_metadata: {}", token))
+            }
+            Ok(())
+        })
+        .expect("metadata batch update");
+    }
+
     pub fn insert_uri(&mut self, token: &NftId, uri: Option<String>) {
         // Try Erc721:
         update(nfts::dsl::nfts)
@@ -106,6 +140,31 @@ impl DataStore {
             .filter(erc1155s::token_id.eq(&token.db_token_id()))
             .execute(&mut self.get_connection())
             .expect("Failed to execute erc1155 update");
+    }
+
+    pub fn insert_uris(&mut self, updates: &[(NftId, Option<String>)]) {
+        let mut conn = self.get_connection();
+
+        conn.transaction::<_, diesel::result::Error, _>(|_| {
+            for (token, uri) in updates {
+                // Try Erc721:
+                update(nfts::dsl::nfts)
+                    .set(nfts::token_uri.eq(uri.clone()))
+                    .filter(nfts::contract_address.eq(&token.db_address()))
+                    .filter(nfts::token_id.eq(&token.db_token_id()))
+                    .execute(&mut self.get_connection())
+                    .expect("Failed to execute nft update");
+                // Try Erc1155
+                update(erc1155s::dsl::erc1155s)
+                    .set(erc1155s::token_uri.eq(uri.clone()))
+                    .filter(erc1155s::contract_address.eq(&token.db_address()))
+                    .filter(erc1155s::token_id.eq(&token.db_token_id()))
+                    .execute(&mut self.get_connection())
+                    .expect("Failed to execute nft update");
+            }
+            Ok(())
+        })
+        .expect("token_uri batch update");
     }
 
     pub fn insert_contract_details(
@@ -124,6 +183,30 @@ impl DataStore {
             .expect("Failed to execute contract update");
     }
 
+    pub fn insert_contract_details_batch(&mut self, updates: &[ContractDetails]) {
+        let mut conn = self.get_connection();
+
+        conn.transaction::<_, diesel::result::Error, _>(|_| {
+            for ContractDetails {
+                address,
+                name,
+                symbol,
+            } in updates
+            {
+                let result = update(token_contracts::dsl::token_contracts)
+                    .set((
+                        token_contracts::name.eq(name),
+                        token_contracts::symbol.eq(symbol),
+                    ))
+                    .filter(token_contracts::address.eq::<&Vec<u8>>(&(*address).into()))
+                    .execute(&mut self.get_connection());
+                handle_insert_result(result, 1, format!("insert_contract_details: {}", address))
+            }
+            Ok(())
+        })
+        .expect("contract_details batch update");
+    }
+
     pub fn insert_contract_abi(&mut self, abi: ContractAbi) {
         let result = diesel::insert_into(contract_abis::dsl::contract_abis)
             .values(abi.clone())
@@ -131,6 +214,23 @@ impl DataStore {
             .do_nothing()
             .execute(&mut self.get_connection());
         handle_insert_result(result, 1, format!("insert_abi: {}", abi.address))
+    }
+
+    pub fn insert_contract_abis(&mut self, updates: &[ContractAbi]) {
+        let mut conn = self.get_connection();
+
+        conn.transaction::<_, diesel::result::Error, _>(|_| {
+            for abi in updates {
+                let result = diesel::insert_into(contract_abis::dsl::contract_abis)
+                    .values(abi.clone())
+                    .on_conflict(contract_abis::address)
+                    .do_nothing()
+                    .execute(&mut self.get_connection());
+                handle_insert_result(result, 1, format!("insert_abi: {}", abi.address))
+            }
+            Ok(())
+        })
+        .expect("contract_abi batch update");
     }
 
     pub fn load_nft(&mut self, token: &NftId) -> Option<Nft> {
@@ -719,6 +819,7 @@ mod tests {
         (store, erc721_id, erc1155_id)
     }
 
+    // Test Multi-Updates!
     #[test]
     fn insert_metadata() {
         // Setup:
@@ -726,9 +827,9 @@ mod tests {
 
         // Token has no metadata yet.
         assert!(store.load_nft(&token_id).unwrap().metadata_id.is_none());
-        // content
+
         let content = serde_json::json!("My JSON document!");
-        store.insert_metadata(&token_id, content.clone());
+        store.insert_metadata_batch(&[(token_id, content.clone())]);
 
         let token = store.load_nft(&token_id).unwrap();
         assert!(token.metadata_id.is_some());
@@ -747,11 +848,13 @@ mod tests {
 
         // Token has no uri yet.
         assert!(store.load_nft(&erc721_id).unwrap().token_uri.is_none());
+
         let uri = Some("string".to_string());
-        store.insert_uri(&erc721_id, uri.clone());
+        store.insert_uris(&[(erc721_id, uri.clone())]);
         assert_eq!(store.load_nft(&erc721_id).unwrap().token_uri, uri);
+
         assert!(store.load_erc1155(&erc1155_id).unwrap().token_uri.is_none());
-        store.insert_uri(&erc1155_id, uri.clone());
+        store.insert_uris(&[(erc1155_id, uri.clone())]);
         assert_eq!(store.load_erc1155(&erc1155_id).unwrap().token_uri, uri);
     }
 
@@ -765,7 +868,12 @@ mod tests {
 
         let name = Some("Name".to_string());
         let symbol = Some("Symbol".to_string());
-        store.insert_contract_details(token_id.address, name.clone(), symbol.clone());
+        let details = ContractDetails {
+            address: token_id.address,
+            name: name.clone(),
+            symbol: symbol.clone(),
+        };
+        store.insert_contract_details_batch(&[details]);
 
         let contract = store.load_contract(token_id.address).unwrap();
         assert_eq!(contract.name, name);
@@ -787,7 +895,7 @@ mod tests {
             address,
             abi: Some(serde_json::json!("Ultimate ABI")),
         };
-        store.insert_contract_abi(contract_abi.clone());
+        store.insert_contract_abis(&[contract_abi.clone()]);
 
         let after = contract_abis::table
             .filter(contract_abis::address.eq::<Vec<u8>>(address.into()))

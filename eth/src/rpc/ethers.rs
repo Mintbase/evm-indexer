@@ -194,7 +194,16 @@ impl EthNodeReading for Client {
         addresses
             .iter()
             .zip(names.into_iter().zip(symbols))
-            .map(|(&address, (name, symbol))| (address, ContractDetails { name, symbol }))
+            .map(|(&address, (name, symbol))| {
+                (
+                    address,
+                    ContractDetails {
+                        address,
+                        name,
+                        symbol,
+                    },
+                )
+            })
             .collect()
     }
 
@@ -394,12 +403,14 @@ mod tests {
                 .get_contract_details(&[ens_contract, bored_ape_contract, mla_field_agent])
                 .await,
             hashmap! {
-                ens_contract => ContractDetails{ name: None, symbol: None },
+                ens_contract => ContractDetails{address: ens_contract, name: None, symbol: None },
                 bored_ape_contract => ContractDetails {
+                    address: bored_ape_contract,
                     name: Some("Bored Ape Yacht Club".to_string()),
                     symbol: Some("BAYC".to_string()),
                 },
                 mla_field_agent => ContractDetails {
+                    address: mla_field_agent,
                     name: Some("Meta Labs Field Agents".to_string()),
                     symbol: Some("MLA1".to_string()),
                 }
