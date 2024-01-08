@@ -104,6 +104,7 @@ impl DataStore {
                     .on_conflict(nft_metadata::uid)
                     .do_nothing()
                     .execute(&mut self.get_connection());
+                handle_insert_result(result, 1, format!("insert_metadata: {}", token));
 
                 // one of the following two tables will be updated (depending on token type.)
                 update(nfts::dsl::nfts)
@@ -118,7 +119,6 @@ impl DataStore {
                     .filter(erc1155s::token_id.eq(&token.db_token_id()))
                     .execute(&mut self.get_connection())
                     .expect("Failed to execute erc1155 update");
-                handle_insert_result(result, 1, format!("insert_metadata: {}", token))
             }
             Ok(())
         })
