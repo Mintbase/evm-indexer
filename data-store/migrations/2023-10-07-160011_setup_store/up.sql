@@ -21,15 +21,16 @@ CREATE TABLE token_contracts
     -- This uniquely defines creation tx
     created_block    int8 not null,
     created_tx_index int8 not null,
-    base_uri         text -- May be null for Erc721
+    base_uri         text, -- May be null for Erc721
+    abi_id           bytea
 --     content_flags    content_flag[],
 --     content_category content_category[]
 );
 
 CREATE TABLE contract_abis
 (
-    address bytea primary key,
-    abi     jsonb
+    uid bytea primary key,
+    abi jsonb
 );
 
 CREATE TABLE nft_metadata
