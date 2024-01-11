@@ -169,7 +169,6 @@ impl DataStore {
             Ok(())
         })
         .expect("contract_abi batch update");
-    }
 
     pub fn load_nft(&mut self, token: &NftId) -> Option<Nft> {
         let result = nfts::dsl::nfts
