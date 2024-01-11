@@ -92,7 +92,13 @@ impl DataStore {
                     .filter(erc1155s::token_id.eq(&token.db_token_id()))
                     .execute(&mut self.get_connection());
                 // Exactly one of the two tables should result in an update!
-                assert!(handle_query_result(erc721_res) + handle_query_result(erc1155_res) == 1);
+                assert_eq!(
+                    handle_query_result(erc721_res) + handle_query_result(erc1155_res),
+                    1,
+                    "invalid token update on metadata insertion {} - {:?}",
+                    token,
+                    uid
+                );
             }
             Ok(())
         })
@@ -160,15 +166,22 @@ impl DataStore {
                     .execute(&mut self.get_connection());
                 handle_insert_result(result, 1, format!("insert_abi for address: {}", address));
                 let contract_update_result = update(token_contracts::dsl::token_contracts)
-                    .set(token_contracts::abi_id.eq::<Vec<u8>>(abi.uid))
+                    .set(token_contracts::abi_id.eq::<Vec<u8>>(abi.clone().uid))
                     .filter(token_contracts::address.eq::<Vec<u8>>(address.into()))
                     .execute(&mut self.get_connection());
-                // Ensure contract exists.
-                assert!(handle_query_result(contract_update_result) > 0);
+                // Ensure contract exists and is updated.
+                assert_eq!(
+                    handle_query_result(contract_update_result),
+                    1,
+                    "invalid contract update on abi insertion {} - {:?}",
+                    address,
+                    abi.uid
+                );
             }
             Ok(())
         })
         .expect("contract_abi batch update");
+    }
 
     pub fn load_nft(&mut self, token: &NftId) -> Option<Nft> {
         let result = nfts::dsl::nfts
