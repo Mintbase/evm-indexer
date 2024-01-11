@@ -27,8 +27,8 @@ diesel::table! {
 }
 
 diesel::table! {
-    contract_abis (address) {
-        address -> Bytea,
+    contract_abis (uid) {
+        uid -> Bytea,
         abi -> Nullable<Jsonb>,
     }
 }
@@ -75,6 +75,7 @@ diesel::table! {
         created_block -> Int8,
         created_tx_index -> Int8,
         base_uri -> Nullable<Text>,
+        abi_id -> Nullable<Bytea>
         // content_flags -> Nullable<Array<Nullable<ContentFlag>>>,
         // content_category -> Nullable<Array<Nullable<ContentCategory>>>,
     }

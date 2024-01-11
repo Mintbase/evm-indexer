@@ -65,39 +65,13 @@ impl DataStore {
         self.pool.get().expect("failed to get connection from pool")
     }
 
-    pub fn insert_metadata(&mut self, token: &NftId, content: Value) {
-        let record = NftMetadata::from(content);
-        let uid = record.uid;
-
-        let result = diesel::insert_into(nft_metadata::dsl::nft_metadata)
-            .values(record)
-            .on_conflict(nft_metadata::uid)
-            .do_nothing()
-            .execute(&mut self.get_connection());
-
-        // one of the following two tables will be updated (depending on token type.)
-        update(nfts::dsl::nfts)
-            .set(nfts::metadata_id.eq::<Vec<u8>>(uid.into()))
-            .filter(nfts::contract_address.eq(&token.db_address()))
-            .filter(nfts::token_id.eq(&token.db_token_id()))
-            .execute(&mut self.get_connection())
-            .expect("Failed to execute nft update");
-        update(erc1155s::dsl::erc1155s)
-            .set(erc1155s::metadata_id.eq::<Vec<u8>>(uid.into()))
-            .filter(erc1155s::contract_address.eq(&token.db_address()))
-            .filter(erc1155s::token_id.eq(&token.db_token_id()))
-            .execute(&mut self.get_connection())
-            .expect("Failed to execute erc1155 update");
-        handle_insert_result(result, 1, format!("insert_metadata: {}", token))
-    }
-
     pub fn insert_metadata_batch(&mut self, updates: &[(NftId, Value)]) {
         let mut conn = self.get_connection();
 
         conn.transaction::<_, diesel::result::Error, _>(|_| {
             for (token, content) in updates {
                 let record = NftMetadata::from(content.clone());
-                let uid = record.uid;
+                let uid = record.clone().uid;
 
                 let result = diesel::insert_into(nft_metadata::dsl::nft_metadata)
                     .values(record)
@@ -107,39 +81,28 @@ impl DataStore {
                 handle_insert_result(result, 1, format!("insert_metadata: {}", token));
 
                 // one of the following two tables will be updated (depending on token type.)
-                update(nfts::dsl::nfts)
-                    .set(nfts::metadata_id.eq::<Vec<u8>>(uid.into()))
+                let erc721_res = update(nfts::dsl::nfts)
+                    .set(nfts::metadata_id.eq::<Vec<u8>>((&*uid).into()))
                     .filter(nfts::contract_address.eq(&token.db_address()))
                     .filter(nfts::token_id.eq(&token.db_token_id()))
-                    .execute(&mut self.get_connection())
-                    .expect("Failed to execute nft update");
-                update(erc1155s::dsl::erc1155s)
-                    .set(erc1155s::metadata_id.eq::<Vec<u8>>(uid.into()))
+                    .execute(&mut self.get_connection());
+                let erc1155_res = update(erc1155s::dsl::erc1155s)
+                    .set(erc1155s::metadata_id.eq::<Vec<u8>>((&*uid).into()))
                     .filter(erc1155s::contract_address.eq(&token.db_address()))
                     .filter(erc1155s::token_id.eq(&token.db_token_id()))
-                    .execute(&mut self.get_connection())
-                    .expect("Failed to execute erc1155 update");
+                    .execute(&mut self.get_connection());
+                // Exactly one of the two tables should result in an update!
+                assert_eq!(
+                    handle_query_result(erc721_res) + handle_query_result(erc1155_res),
+                    1,
+                    "invalid token update on metadata insertion {} - {:?}",
+                    token,
+                    uid
+                );
             }
             Ok(())
         })
         .expect("metadata batch update");
-    }
-
-    pub fn insert_uri(&mut self, token: &NftId, uri: Option<String>) {
-        // Try Erc721:
-        update(nfts::dsl::nfts)
-            .set(nfts::token_uri.eq(uri.clone()))
-            .filter(nfts::contract_address.eq(&token.db_address()))
-            .filter(nfts::token_id.eq(&token.db_token_id()))
-            .execute(&mut self.get_connection())
-            .expect("Failed to execute nft update");
-        // Try Erc1155
-        update(erc1155s::dsl::erc1155s)
-            .set(erc1155s::token_uri.eq(uri.clone()))
-            .filter(erc1155s::contract_address.eq(&token.db_address()))
-            .filter(erc1155s::token_id.eq(&token.db_token_id()))
-            .execute(&mut self.get_connection())
-            .expect("Failed to execute erc1155 update");
     }
 
     pub fn insert_uris(&mut self, updates: &[(NftId, Option<String>)]) {
@@ -167,22 +130,6 @@ impl DataStore {
         .expect("token_uri batch update");
     }
 
-    pub fn insert_contract_details(
-        &mut self,
-        address: Address,
-        name: Option<String>,
-        symbol: Option<String>,
-    ) {
-        update(token_contracts::dsl::token_contracts)
-            .set((
-                token_contracts::name.eq(name),
-                token_contracts::symbol.eq(symbol),
-            ))
-            .filter(token_contracts::address.eq::<&Vec<u8>>(&address.into()))
-            .execute(&mut self.get_connection())
-            .expect("Failed to execute contract update");
-    }
-
     pub fn insert_contract_details_batch(&mut self, updates: &[ContractDetails]) {
         let mut conn = self.get_connection();
 
@@ -207,26 +154,29 @@ impl DataStore {
         .expect("contract_details batch update");
     }
 
-    pub fn insert_contract_abi(&mut self, abi: ContractAbi) {
-        let result = diesel::insert_into(contract_abis::dsl::contract_abis)
-            .values(abi.clone())
-            .on_conflict(contract_abis::address)
-            .do_nothing()
-            .execute(&mut self.get_connection());
-        handle_insert_result(result, 1, format!("insert_abi: {}", abi.address))
-    }
-
-    pub fn insert_contract_abis(&mut self, updates: &[ContractAbi]) {
+    pub fn insert_contract_abis(&mut self, updates: &[(Address, ContractAbi)]) {
         let mut conn = self.get_connection();
 
         conn.transaction::<_, diesel::result::Error, _>(|_| {
-            for abi in updates {
+            for (address, abi) in updates.iter().cloned() {
                 let result = diesel::insert_into(contract_abis::dsl::contract_abis)
                     .values(abi.clone())
-                    .on_conflict(contract_abis::address)
+                    .on_conflict(contract_abis::uid)
                     .do_nothing()
                     .execute(&mut self.get_connection());
-                handle_insert_result(result, 1, format!("insert_abi: {}", abi.address))
+                handle_insert_result(result, 1, format!("insert_abi for address: {}", address));
+                let contract_update_result = update(token_contracts::dsl::token_contracts)
+                    .set(token_contracts::abi_id.eq::<Vec<u8>>(abi.clone().uid))
+                    .filter(token_contracts::address.eq::<Vec<u8>>(address.into()))
+                    .execute(&mut self.get_connection());
+                // Ensure contract exists and is updated.
+                assert_eq!(
+                    handle_query_result(contract_update_result),
+                    1,
+                    "invalid contract update on abi insertion {} - {:?}",
+                    address,
+                    abi.uid
+                );
             }
             Ok(())
         })
@@ -303,12 +253,11 @@ impl DataStore {
         handle_query_result(result)
     }
 
-    pub fn get_contract_abi(&mut self, address: Address) -> Option<ContractAbi> {
+    pub fn get_contract_abi(&mut self, uid: &[u8; 16]) -> Option<ContractAbi> {
         let result = contract_abis::dsl::contract_abis
-            .filter(contract_abis::address.eq::<Vec<u8>>(address.into()))
+            .filter(contract_abis::uid.eq::<Vec<u8>>(uid.into()))
             .first(&mut self.get_connection())
             .optional();
-        // .load::<ContractAbi>(&mut self.get_connection());
         handle_query_result(result)
     }
 
@@ -883,24 +832,31 @@ mod tests {
     #[test]
     fn add_contract_abi() {
         let mut store = get_new_store();
-        let address = Address::zero();
+        let base = test_event_base();
+        let address = base.contract_address;
+        let uid = vec![1u8; 16];
 
         let before = contract_abis::table
-            .filter(contract_abis::address.eq::<Vec<u8>>(address.into()))
+            .filter(contract_abis::uid.eq::<Vec<u8>>(uid.clone()))
             .load::<ContractAbi>(&mut store.get_connection())
             .unwrap();
         assert!(before.is_empty());
+        assert!(store.load_contract(address).is_none());
 
+        // Contract must exist before abi can be added!
+        store.save_contract(TokenContract::from_event_base(&base));
         let contract_abi = ContractAbi {
-            address,
+            uid: uid.clone(),
             abi: Some(serde_json::json!("Ultimate ABI")),
         };
-        store.insert_contract_abis(&[contract_abi.clone()]);
+        store.insert_contract_abis(&[(address, contract_abi.clone())]);
 
         let after = contract_abis::table
-            .filter(contract_abis::address.eq::<Vec<u8>>(address.into()))
+            .filter(contract_abis::uid.eq::<Vec<u8>>(uid.clone()))
             .load::<ContractAbi>(&mut store.get_connection())
             .unwrap();
+
         assert_eq!(after, [contract_abi]);
+        assert_eq!(store.load_contract(address).unwrap().abi_id, Some(uid));
     }
 }
