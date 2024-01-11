@@ -65,32 +65,6 @@ impl DataStore {
         self.pool.get().expect("failed to get connection from pool")
     }
 
-    pub fn insert_metadata(&mut self, token: &NftId, content: Value) {
-        let record = NftMetadata::from(content);
-        let uid = record.clone().uid;
-
-        let result = diesel::insert_into(nft_metadata::dsl::nft_metadata)
-            .values(record)
-            .on_conflict(nft_metadata::uid)
-            .do_nothing()
-            .execute(&mut self.get_connection());
-
-        // one of the following two tables will be updated (depending on token type.)
-        update(nfts::dsl::nfts)
-            .set(nfts::metadata_id.eq::<&Vec<u8>>(&uid))
-            .filter(nfts::contract_address.eq(&token.db_address()))
-            .filter(nfts::token_id.eq(&token.db_token_id()))
-            .execute(&mut self.get_connection())
-            .expect("Failed to execute nft update");
-        update(erc1155s::dsl::erc1155s)
-            .set(erc1155s::metadata_id.eq::<&Vec<u8>>(&uid))
-            .filter(erc1155s::contract_address.eq(&token.db_address()))
-            .filter(erc1155s::token_id.eq(&token.db_token_id()))
-            .execute(&mut self.get_connection())
-            .expect("Failed to execute erc1155 update");
-        handle_insert_result(result, 1, format!("insert_metadata: {}", token))
-    }
-
     pub fn insert_metadata_batch(&mut self, updates: &[(NftId, Value)]) {
         let mut conn = self.get_connection();
 
@@ -125,23 +99,6 @@ impl DataStore {
         .expect("metadata batch update");
     }
 
-    pub fn insert_uri(&mut self, token: &NftId, uri: Option<String>) {
-        // Try Erc721:
-        update(nfts::dsl::nfts)
-            .set(nfts::token_uri.eq(uri.clone()))
-            .filter(nfts::contract_address.eq(&token.db_address()))
-            .filter(nfts::token_id.eq(&token.db_token_id()))
-            .execute(&mut self.get_connection())
-            .expect("Failed to execute nft update");
-        // Try Erc1155
-        update(erc1155s::dsl::erc1155s)
-            .set(erc1155s::token_uri.eq(uri.clone()))
-            .filter(erc1155s::contract_address.eq(&token.db_address()))
-            .filter(erc1155s::token_id.eq(&token.db_token_id()))
-            .execute(&mut self.get_connection())
-            .expect("Failed to execute erc1155 update");
-    }
-
     pub fn insert_uris(&mut self, updates: &[(NftId, Option<String>)]) {
         let mut conn = self.get_connection();
 
@@ -167,22 +124,6 @@ impl DataStore {
         .expect("token_uri batch update");
     }
 
-    pub fn insert_contract_details(
-        &mut self,
-        address: Address,
-        name: Option<String>,
-        symbol: Option<String>,
-    ) {
-        update(token_contracts::dsl::token_contracts)
-            .set((
-                token_contracts::name.eq(name),
-                token_contracts::symbol.eq(symbol),
-            ))
-            .filter(token_contracts::address.eq::<&Vec<u8>>(&address.into()))
-            .execute(&mut self.get_connection())
-            .expect("Failed to execute contract update");
-    }
-
     pub fn insert_contract_details_batch(&mut self, updates: &[ContractDetails]) {
         let mut conn = self.get_connection();
 
@@ -205,21 +146,6 @@ impl DataStore {
             Ok(())
         })
         .expect("contract_details batch update");
-    }
-
-    pub fn insert_contract_abi(&mut self, address: Address, abi: ContractAbi) {
-        let result = diesel::insert_into(contract_abis::dsl::contract_abis)
-            .values(abi.clone())
-            .on_conflict(contract_abis::uid)
-            .do_nothing()
-            .execute(&mut self.get_connection());
-        handle_insert_result(result, 1, format!("insert_abi for address: {}", address));
-        let contract_update_result = update(token_contracts::dsl::token_contracts)
-            .set(token_contracts::abi_id.eq(abi.uid))
-            .filter(token_contracts::address.eq::<Vec<u8>>(address.into()))
-            .execute(&mut self.get_connection());
-        // Ensure contract exists.
-        assert!(handle_query_result(contract_update_result) > 0);
     }
 
     pub fn insert_contract_abis(&mut self, updates: &[(Address, ContractAbi)]) {
