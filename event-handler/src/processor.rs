@@ -144,7 +144,7 @@ impl EventProcessor {
             )
             .await;
         tracing::info!(
-            "retrieving missing node data for {} contracts and {} tokens",
+            "retrieved missing node data for {} contracts and {} tokens",
             contract_details.len(),
             missing_uris.len()
         );
@@ -181,7 +181,9 @@ impl EventProcessor {
                     match meta {
                         EventMeta::Erc721Approval(a) => self.handle_event(base, a, tx),
                         EventMeta::Erc721Transfer(t) => self.handle_event(base, t, tx),
-                        EventMeta::Erc1155TransferBatch(batch) => {
+                        EventMeta::Erc1155TransferBatch(mut batch) => {
+                            // Squash the event to avoid unintentional replay protection errors.
+                            batch.squash();
                             for (id, value) in batch.ids.into_iter().zip(batch.values.into_iter()) {
                                 self.handle_event(
                                     base,
@@ -203,6 +205,7 @@ impl EventProcessor {
                 }
             }
         }
+        tracing::debug!("events processed, retrieving missing node data");
         // TODO (Once we have metadata-retrieval)
         //  this will have to happen AFTER updates.
         //  The service expects records to exist attempting to update.
