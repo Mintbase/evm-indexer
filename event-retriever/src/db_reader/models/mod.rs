@@ -86,6 +86,7 @@ pub struct Erc1155TransferBatch {
     pub values: Vec<U256>,
 }
 
+/// Helper method to determine if a slice contains duplicates.
 fn contains_duplicates<T: Eq + std::hash::Hash>(vec: &[T]) -> bool {
     let mut seen = HashSet::with_capacity(vec.len());
     for item in vec {
@@ -95,6 +96,7 @@ fn contains_duplicates<T: Eq + std::hash::Hash>(vec: &[T]) -> bool {
     }
     false
 }
+
 impl Erc1155TransferBatch {
     pub fn squash(&mut self) {
         if !contains_duplicates(&self.ids) {
