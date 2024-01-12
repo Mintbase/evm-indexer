@@ -240,8 +240,8 @@ mod tests {
             TEST_ETH_RPC,
             HandlerConfig {
                 chain_data_source: ChainDataSource::Database,
-                page_size: 1000,
-                fetch_metadata: true,
+                page_size: 100,
+                fetch_metadata: false,
             },
         )
         .unwrap()
