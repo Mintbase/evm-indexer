@@ -1,5 +1,8 @@
+use bigdecimal::{BigDecimal, Zero};
 use eth::types::{Address, U256};
+use std::collections::{BTreeMap, HashSet};
 use std::{cmp::Ordering, collections::BinaryHeap, fmt::Debug};
+
 pub(crate) mod db;
 
 #[derive(Debug)]
@@ -83,6 +86,39 @@ pub struct Erc1155TransferBatch {
     pub values: Vec<U256>,
 }
 
+fn contains_duplicates<T: Eq + std::hash::Hash>(vec: &[T]) -> bool {
+    let mut seen = HashSet::with_capacity(vec.len());
+    for item in vec {
+        if !seen.insert(item) {
+            return true; // Duplicate found
+        }
+    }
+    false
+}
+impl Erc1155TransferBatch {
+    pub fn squash(&mut self) {
+        if !contains_duplicates(&self.ids) {
+            // Avoid expensive operation, if record doesn't need to be squashed.
+            return;
+        }
+        let mut aggregated_values = BTreeMap::new();
+
+        // Aggregate the values for each unique ID
+        for (id, value) in self.ids.clone().into_iter().zip(self.values.iter()) {
+            // U256 has no addition so we must use BigDecimal here and convert back later.
+            *aggregated_values.entry(id).or_insert(BigDecimal::zero()) += BigDecimal::from(*value);
+        }
+
+        // Update ids and values from the aggregated data
+        self.ids = aggregated_values.keys().cloned().collect();
+        self.values = aggregated_values
+            .values()
+            .cloned()
+            .map(U256::from)
+            .collect();
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub struct Erc1155TransferSingle {
     pub operator: Address,
@@ -147,6 +183,35 @@ pub fn merge_sorted_iters<T: Ord>(mut iters: Vec<Box<dyn Iterator<Item = T>>>) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vector_contains_duplicates() {
+        assert!(contains_duplicates(&[0, 0]));
+        assert!(!contains_duplicates(&[0, 1]));
+        assert!(!contains_duplicates::<u8>(&[]));
+    }
+
+    #[test]
+    fn batch_transfer_squashing() {
+        let mut bt = Erc1155TransferBatch {
+            operator: Default::default(),
+            from: Default::default(),
+            to: Default::default(),
+            ids: vec![U256::from(1), U256::from(1), U256::from(2), U256::from(2)],
+            values: vec![U256::from(3), U256::from(4), U256::from(5), U256::from(6)],
+        };
+        bt.squash();
+        assert_eq!(
+            bt,
+            Erc1155TransferBatch {
+                operator: Default::default(),
+                from: Default::default(),
+                to: Default::default(),
+                ids: vec![U256::from(1), U256::from(2)],
+                values: vec![U256::from(7), U256::from(11)],
+            }
+        )
+    }
 
     fn event_base_for_block_log_index(block_number: u64, log_index: u64) -> EventBase {
         EventBase {
