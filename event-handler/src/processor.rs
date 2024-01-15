@@ -13,7 +13,7 @@ use event_retriever::db_reader::{
     diesel::{BlockRange, EventSource},
     models::*,
 };
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, env, sync::Arc};
 
 pub struct EventProcessor {
     /// Source of events for processing
@@ -40,6 +40,20 @@ impl EventProcessor {
             store: DataStore::new(store_url).context("init DataStore")?,
             updates: UpdateCache::default(),
             eth_client: Arc::new(EthRpcClient::new(eth_rpc).context("init EthRpcClient")?),
+            config,
+        })
+    }
+
+    pub fn from_env(config: HandlerConfig) -> Result<Self> {
+        let source_url = env::var("SOURCE_URL").expect("missing env var SOURCE_URL");
+        let store_url = env::var("STORE_URL").expect("missing env var STORE_URL");
+        let eth_rpc = env::var("NODE_URL").expect("missing env var NODE_URL");
+
+        Ok(Self {
+            source: EventSource::new(&source_url).context("init EventSource")?,
+            store: DataStore::new(&store_url).context("init DataStore")?,
+            updates: UpdateCache::default(),
+            eth_client: Arc::new(EthRpcClient::new(&eth_rpc).context("init EthRpcClient")?),
             config,
         })
     }
@@ -88,6 +102,7 @@ impl EventProcessor {
             .contracts
             .insert(address, TokenContract::from_event_base(event));
     }
+
     async fn load_chain_data(&mut self, range: BlockRange) -> Result<HashMap<u64, BlockData>> {
         let block_info = match self.config.chain_data_source {
             ChainDataSource::Database => {
@@ -120,6 +135,10 @@ impl EventProcessor {
     }
 
     async fn get_missing_node_data(&mut self) {
+        if !self.config.fetch_node_data {
+            return;
+        }
+        tracing::debug!("retrieving missing node data");
         // TODO - (after metadata-retrieving) this functionality will be replaced by metadata-retriever.
         //  https://github.com/Mintbase/evm-indexer/issues/105
         let (mut missing_uris, mut contract_details) = self
@@ -205,20 +224,13 @@ impl EventProcessor {
                 }
             }
         }
-        tracing::debug!("events processed, retrieving missing node data");
-        // TODO (Once we have metadata-retrieval)
-        //  this will have to happen AFTER updates.
-        //  The service expects records to exist attempting to update.
-        // Retrieve missing data from node.
-        match self.config.fetch_metadata {
-            true => self.get_missing_node_data().await,
-            // This is a placeholder for metadata retrieving invocation.
-            // Make pubsub post here.
-            false => (),
-        }
+
+        self.get_missing_node_data().await;
 
         // Drain cache and write to store
         self.updates.write(&mut self.store).await;
+        // TODO: Retrieve off-chain metadata. AFTER updates (since records must exist in DB)
+
         tracing::info!("completed event processing for {:?}", range);
         Ok(())
     }
@@ -241,7 +253,7 @@ mod tests {
             HandlerConfig {
                 chain_data_source: ChainDataSource::Database,
                 page_size: 100,
-                fetch_metadata: false,
+                fetch_node_data: false,
             },
         )
         .unwrap()

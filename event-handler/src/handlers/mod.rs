@@ -70,7 +70,7 @@ pub mod test_util {
             HandlerConfig {
                 chain_data_source: ChainDataSource::Database,
                 page_size: 10,
-                fetch_metadata: false,
+                fetch_node_data: false,
             },
         )
         .unwrap()
