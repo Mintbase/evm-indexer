@@ -51,26 +51,21 @@ impl EventProcessor {
             //  https://github.com/Mintbase/evm-indexer/issues/104
             let max_block = self.source.get_finalized_block();
 
-            if current_block >= max_block {
+            if current_block > max_block {
                 // Exit when reached or exceeded the max_block
                 break;
             }
 
-            let end_block = current_block + self.config.page_size - 1;
+            let page_end = current_block + self.config.page_size - 1;
             let block_range = BlockRange {
                 start: current_block,
-                end: end_block.min(max_block), // Ensure we don't exceed max_block
+                end: page_end.min(max_block), // Ensure we don't exceed max_block
             };
 
             self.process_events_for_block_range(block_range).await?;
 
             // Update current_block for the next iteration
-            let processed_block = self.store.get_processed_block();
-            if processed_block <= current_block {
-                // Ensure progress, or break the loop
-                break;
-            }
-            current_block = processed_block + 1;
+            current_block = block_range.end + 1;
         }
 
         Ok(())
@@ -102,21 +97,6 @@ impl EventProcessor {
                     .await?
             }
         };
-        self.updates
-            .transactions
-            .extend(
-                block_info
-                    .clone()
-                    .into_iter()
-                    .flat_map(|(block, block_data)| {
-                        block_data
-                            .transactions
-                            .into_iter()
-                            .map(move |(idx, data)| Transaction::new(block, idx, data))
-                    }),
-            );
-
-        self.updates.blocks.extend(block_info.clone().into_values());
         Ok(block_info)
     }
 
@@ -175,12 +155,16 @@ impl EventProcessor {
         let event_map = self.source.get_events_for_block_range(range)?;
         let mut block_data = self.load_chain_data(range).await?;
         for (block, block_events) in event_map.into_iter() {
-            let tx_data = block_data
+            let block_data = block_data
                 .remove(&block)
-                .unwrap_or_else(|| panic!("Missing block {} in {:?}", block, range))
-                .transactions;
+                .unwrap_or_else(|| panic!("Missing block {} in {:?}", block, range));
             for ((tx_index, _), tx_events) in block_events {
-                let tx = tx_data.get(&tx_index).expect("receipt known to exist!");
+                let tx = block_data
+                    .transactions
+                    .get(&tx_index)
+                    .expect("receipt known to exist!");
+                self.updates
+                    .add_block_tx(&block_data, &Transaction::new(block, tx_index, tx));
                 for NftEvent { base, meta } in tx_events.into_iter() {
                     self.check_for_contract(&base);
                     match meta {
@@ -216,8 +200,6 @@ impl EventProcessor {
         // Drain cache and write to store
         self.updates.write(&mut self.store).await;
         // TODO: Retrieve off-chain metadata. AFTER updates (since records must exist in DB)
-
-        tracing::info!("completed event processing for {:?}", range);
         Ok(())
     }
 }

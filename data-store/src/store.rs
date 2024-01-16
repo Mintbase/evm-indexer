@@ -640,8 +640,8 @@ mod tests {
         };
         // First call should not panic or log
         store.save_transactions(vec![
-            Transaction::new(1, 2, details),
-            Transaction::new(3, 4, details),
+            Transaction::new(1, 2, &details),
+            Transaction::new(3, 4, &details),
         ]);
 
         assert_eq!(
@@ -654,7 +654,7 @@ mod tests {
         // This call will do nothing.
         store.save_transactions(vec![
             // Notice same (block, index) = (1, 2) as above.
-            Transaction::new(1, 2, details),
+            Transaction::new(1, 2, &details),
         ]);
         assert_eq!(
             Ok(2),

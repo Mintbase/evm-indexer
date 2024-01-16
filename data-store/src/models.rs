@@ -278,8 +278,17 @@ pub struct Transaction {
     to: Option<Vec<u8>>,
 }
 
+impl Eq for Transaction {}
+
+// Implement Hash based solely on the 'number' field
+impl std::hash::Hash for Transaction {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.hash.hash(state);
+    }
+}
+
 impl Transaction {
-    pub fn new(block: u64, index: u64, details: TxDetails) -> Self {
+    pub fn new(block: u64, index: u64, details: &TxDetails) -> Self {
         Self {
             block_number: block as i64,
             index: index as i64,

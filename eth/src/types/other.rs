@@ -14,6 +14,15 @@ pub struct BlockData {
     pub transactions: HashMap<u64, TxDetails>,
 }
 
+impl Eq for BlockData {}
+
+// Implement Hash based solely on the 'number' field
+impl std::hash::Hash for BlockData {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.number.hash(state);
+    }
+}
+
 impl BlockData {
     pub fn db_time(&self) -> NaiveDateTime {
         NaiveDateTime::from_timestamp_opt(self.time.try_into().expect("no crazy times"), 0)
