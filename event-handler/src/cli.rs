@@ -21,14 +21,14 @@ pub struct Args {
     pub log: String,
 
     /// Source of additional on-chain data
-    #[clap(long, env, value_enum)]
+    #[clap(long, env, value_enum, default_value = "database")]
     pub chain_source: ChainDataSource,
 
     /// BlockRange width for run-loop processing.
     #[clap(long, env, default_value = "1000")]
     pub page_size: i64,
 
-    /// Source of additional on-chain data
-    #[clap(long, env, default_value = "true")]
+    /// True when this service is responsible for fetching missing node data.
+    #[clap(long, env)]
     pub fetch_node_data: bool,
 }

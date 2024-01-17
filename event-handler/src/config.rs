@@ -15,7 +15,7 @@ pub struct HandlerConfig {
     pub chain_data_source: ChainDataSource,
     /// BlockRange width for run-loop processing.
     pub page_size: i64,
-    /// True when this service should be responsible for fetching missing node data.
+    /// True when this service is responsible for fetching missing node data.
     pub fetch_node_data: bool,
 }
 
