@@ -1,8 +1,9 @@
+use clap::ValueEnum;
 use serde::Deserialize;
 use std::{fs, path::PathBuf};
 
 /// Where chain data should be retrieved from
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone, ValueEnum)]
 pub enum ChainDataSource {
     Database,
     Node,
@@ -14,7 +15,7 @@ pub struct HandlerConfig {
     pub chain_data_source: ChainDataSource,
     /// BlockRange width for run-loop processing.
     pub page_size: i64,
-    /// True when this service should be responsible for fetching missing node data.
+    /// True when this service is responsible for fetching missing node data.
     pub fetch_node_data: bool,
 }
 
