@@ -1,13 +1,19 @@
-FROM rust:latest as builder
+FROM rust:1.75.0 as builder
 
-WORKDIR /usr/src/handler
+WORKDIR /src/
 
-COPY ./src ./src
-COPY ./Cargo.toml ./Cargo.toml
+RUN apt-get update && apt-get install -y git libssl-dev
 
-RUN cargo build --release
+# Copy & Build
+COPY . .
+RUN CARGO_PROFILE_RELEASE_DEBUG=1 cargo build --release
 
-FROM debian:buster-slim
-COPY --from=builder /usr/src/handler/target/release/handler_binary /usr/local/bin/handler_binary
+# Extract Binary
+FROM docker.io/debian:bullseye-slim
 
-CMD ["handler_binary"]
+# Handle signal handlers properly
+RUN apt-get update && apt-get install -y ca-certificates tini && apt-get clean
+COPY --from=builder /src/target/release/event-handler /usr/local/bin/event-handler
+
+CMD echo "Specify binary..."
+ENTRYPOINT ["/usr/bin/tini", "--"]
