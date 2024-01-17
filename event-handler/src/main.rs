@@ -24,7 +24,7 @@ async fn main() -> Result<()> {
         HandlerConfig {
             chain_data_source: args.chain_source,
             page_size: args.page_size,
-            fetch_node_data: args.fetch_node_data,
+            fetch_node_data: !args.skip_node_fetching,
         },
     )
     .expect("error constructing EventProcessor");

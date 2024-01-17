@@ -4,15 +4,15 @@ use url::Url;
 
 #[derive(Debug, clap::Parser)]
 pub struct Args {
-    /// Source database connection string
+    /// Source database connection string.
     #[clap(long, env)]
     pub source_url: Url,
 
-    /// Store database connection string
+    /// Store database connection string.
     #[clap(long, env)]
     pub store_url: Url,
 
-    /// The node RPC API endpoint.
+    /// The Ethereum RPC endpoint.
     #[clap(long, env)]
     pub node_url: Url,
 
@@ -28,7 +28,7 @@ pub struct Args {
     #[clap(long, env, default_value = "1000")]
     pub page_size: i64,
 
-    /// True when this service is responsible for fetching missing node data.
+    /// Include to skip additional on-chain data fetching
     #[clap(long, env)]
-    pub fetch_node_data: bool,
+    pub skip_node_fetching: bool,
 }
