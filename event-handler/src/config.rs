@@ -1,8 +1,9 @@
+use clap::ValueEnum;
 use serde::Deserialize;
 use std::{fs, path::PathBuf};
 
 /// Where chain data should be retrieved from
-#[derive(Debug, Deserialize, PartialEq)]
+#[derive(Debug, Deserialize, PartialEq, Clone, ValueEnum)]
 pub enum ChainDataSource {
     Database,
     Node,
