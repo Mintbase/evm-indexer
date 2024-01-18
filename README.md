@@ -16,7 +16,7 @@ cargo test -- --test-threads 1
 ```shell
 docker build -f event-handler/Dockerfile -t indexer .
 
-docker run -rm indexer event-handler
+docker run --env-file ./event-handler/.env indexer event-handler
 ```
 
 

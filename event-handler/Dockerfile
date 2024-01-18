@@ -1,18 +1,15 @@
-FROM rust:1.75.0 as builder
+FROM rust:bookworm as builder
 
 WORKDIR /src/
 
-RUN apt-get update && apt-get install -y git libssl-dev
-
 # Copy & Build
 COPY . .
-RUN CARGO_PROFILE_RELEASE_DEBUG=1 cargo build --release
+RUN cargo build --release
 
 # Extract Binary
-FROM docker.io/debian:bullseye-slim
+FROM docker.io/debian:bookworm-slim
 
-# Handle signal handlers properly
-RUN apt-get update && apt-get install -y ca-certificates tini && apt-get clean
+RUN apt-get update && apt-get install -y tini openssl libpq-dev
 COPY --from=builder /src/target/release/event-handler /usr/local/bin/event-handler
 
 CMD echo "Specify binary..."
