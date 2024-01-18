@@ -13,11 +13,18 @@ cargo test -- --test-threads 1
 
 ## Build & Run Event Handler
 
+Copy the example environment file and fill out your desired configuration:
+
+```shell
+cp ./event-handler/.env.example ./event-handler/.env
+```
+
 ```shell
 docker build -f event-handler/Dockerfile -t indexer .
 
-docker run --env-file ./event-handler/.env indexer event-handler
+docker run --rm --env-file ./event-handler/.env indexer event-handler
 ```
 
-
+Note: If you are running against a local (docker) instance of postgres you will need to include
+`--network host --add-host=localhost:host-gateway`
  

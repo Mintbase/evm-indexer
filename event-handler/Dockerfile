@@ -9,7 +9,7 @@ RUN cargo build --release
 # Extract Binary
 FROM docker.io/debian:bookworm-slim
 
-RUN apt-get update && apt-get install -y tini openssl libpq-dev
+RUN apt-get update && apt-get install -y ca-certificates tini libpq-dev
 COPY --from=builder /src/target/release/event-handler /usr/local/bin/event-handler
 
 CMD echo "Specify binary..."

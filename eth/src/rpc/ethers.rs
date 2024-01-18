@@ -184,12 +184,12 @@ impl EthNodeReading for Client {
         &self,
         addresses: &[Address],
     ) -> HashMap<Address, ContractDetails> {
-        tracing::debug!("Preparing {} Contract Details Requests", addresses.len());
+        tracing::info!("preparing {} contract details requests", addresses.len());
         let name_futures = addresses.iter().cloned().map(|a| self.get_name(a));
         let symbol_futures = addresses.iter().cloned().map(|a| self.get_symbol(a));
 
         let (names, symbols) = join(join_all(name_futures), join_all(symbol_futures)).await;
-        tracing::debug!("Complete {} Contract Details Requests", addresses.len());
+        tracing::debug!("complete {} contract details requests", addresses.len());
 
         addresses
             .iter()
@@ -208,7 +208,7 @@ impl EthNodeReading for Client {
     }
 
     async fn get_uris(&self, token_ids: &[NftId]) -> HashMap<NftId, Option<String>> {
-        tracing::info!("Preparing {} tokenUri Requests", token_ids.len());
+        tracing::info!("preparing {} tokenUri requests", token_ids.len());
         let futures = token_ids
             .iter()
             .cloned()

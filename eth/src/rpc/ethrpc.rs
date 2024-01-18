@@ -3,13 +3,13 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use ethrpc::{
     eth,
-    http::{reqwest::Url, Error},
+    http::{buffered::Configuration, reqwest::Url, Error},
     types::TransactionCall,
     types::*,
 };
 use futures::future::{join, join_all};
 use solabi::{decode::Decode, encode::Encode, selector, FunctionEncoder};
-use std::{collections::HashMap, fmt::Debug};
+use std::{collections::HashMap, fmt::Debug, time::Duration};
 
 use super::EthNodeReading;
 
@@ -69,7 +69,7 @@ impl EthNodeReading for Client {
     }
 
     async fn get_uris(&self, token_ids: &[NftId]) -> HashMap<NftId, Option<String>> {
-        tracing::info!("Preparing {} tokenUri Requests", token_ids.len());
+        tracing::info!("preparing {} tokenUri requests", token_ids.len());
         let futures = token_ids.iter().map(|token| {
             self.provider
                 .call(eth::Call, (Self::uri_call(token), BlockId::default()))
@@ -97,7 +97,7 @@ impl EthNodeReading for Client {
         &self,
         addresses: &[Address],
     ) -> HashMap<Address, ContractDetails> {
-        tracing::debug!("Preparing {} Contract Details Requests", addresses.len());
+        tracing::info!("preparing {} contract details requests", addresses.len());
         let name_futures = addresses.iter().cloned().map(|addr| {
             self.provider
                 .call(eth::Call, (Self::name_call(addr), BlockId::default()))
@@ -144,8 +144,12 @@ impl EthNodeReading for Client {
 
 impl Client {
     pub fn new(url: &str) -> Result<Self> {
+        let config = Configuration {
+            delay: Duration::from_millis(20),
+            ..Default::default()
+        };
         Ok(Self {
-            provider: ethrpc::http::Client::new(Url::parse(url)?).buffered(Default::default()),
+            provider: ethrpc::http::Client::new(Url::parse(url)?).buffered(config),
         })
     }
 

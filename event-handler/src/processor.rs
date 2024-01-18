@@ -65,7 +65,7 @@ impl EventProcessor {
             self.process_events_for_block_range(block_range).await?;
 
             // Update current_block for the next iteration
-            current_block = block_range.end + 1;
+            current_block = block_range.end;
         }
 
         Ok(())
