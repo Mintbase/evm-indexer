@@ -1,5 +1,6 @@
 use crate::{models::*, schema::*};
 
+use crate::update_cache::UpdateCache;
 use anyhow::{Context, Result};
 use bigdecimal::{BigDecimal, Zero};
 use diesel::{
@@ -18,6 +19,8 @@ use std::sync::Arc;
 pub struct DataStore {
     pool: Pool<ConnectionManager<PgConnection>>,
 }
+
+type Connexion = PooledConnection<ConnectionManager<PgConnection>>;
 
 fn handle_insert_result(result: QueryResult<usize>, expected_updates: usize, context: String) {
     match result {
@@ -61,14 +64,14 @@ impl DataStore {
         })
     }
 
-    fn get_connection(&self) -> PooledConnection<ConnectionManager<PgConnection>> {
+    fn get_connection(&self) -> Connexion {
         self.pool.get().expect("failed to get connection from pool")
     }
 
     pub fn insert_metadata_batch(&mut self, updates: &[(NftId, Value)]) {
         let mut conn = self.get_connection();
 
-        conn.transaction::<_, diesel::result::Error, _>(|_| {
+        conn.transaction::<_, diesel::result::Error, _>(|conn| {
             for (token, content) in updates {
                 let record = NftMetadata::from(content.clone());
                 let uid = record.clone().uid;
@@ -77,7 +80,7 @@ impl DataStore {
                     .values(record)
                     .on_conflict(nft_metadata::uid)
                     .do_nothing()
-                    .execute(&mut self.get_connection());
+                    .execute(conn);
                 handle_insert_result(result, 1, format!("insert_metadata: {}", token));
 
                 // one of the following two tables will be updated (depending on token type.)
@@ -85,12 +88,12 @@ impl DataStore {
                     .set(nfts::metadata_id.eq::<Vec<u8>>((&*uid).into()))
                     .filter(nfts::contract_address.eq(&token.db_address()))
                     .filter(nfts::token_id.eq(&token.db_token_id()))
-                    .execute(&mut self.get_connection());
+                    .execute(conn);
                 let erc1155_res = update(erc1155s::dsl::erc1155s)
                     .set(erc1155s::metadata_id.eq::<Vec<u8>>((&*uid).into()))
                     .filter(erc1155s::contract_address.eq(&token.db_address()))
                     .filter(erc1155s::token_id.eq(&token.db_token_id()))
-                    .execute(&mut self.get_connection());
+                    .execute(conn);
                 // Exactly one of the two tables should result in an update!
                 assert_eq!(
                     handle_query_result(erc721_res) + handle_query_result(erc1155_res),
@@ -108,21 +111,21 @@ impl DataStore {
     pub fn insert_uris(&mut self, updates: &[(NftId, Option<String>)]) {
         let mut conn = self.get_connection();
 
-        conn.transaction::<_, diesel::result::Error, _>(|_| {
+        conn.transaction::<_, diesel::result::Error, _>(|conn| {
             for (token, uri) in updates {
                 // Try Erc721:
                 update(nfts::dsl::nfts)
                     .set(nfts::token_uri.eq(uri.clone()))
                     .filter(nfts::contract_address.eq(&token.db_address()))
                     .filter(nfts::token_id.eq(&token.db_token_id()))
-                    .execute(&mut self.get_connection())
+                    .execute(conn)
                     .expect("Failed to execute nft update");
                 // Try Erc1155
                 update(erc1155s::dsl::erc1155s)
                     .set(erc1155s::token_uri.eq(uri.clone()))
                     .filter(erc1155s::contract_address.eq(&token.db_address()))
                     .filter(erc1155s::token_id.eq(&token.db_token_id()))
-                    .execute(&mut self.get_connection())
+                    .execute(conn)
                     .expect("Failed to execute nft update");
             }
             Ok(())
@@ -133,7 +136,7 @@ impl DataStore {
     pub fn insert_contract_details_batch(&mut self, updates: &[ContractDetails]) {
         let mut conn = self.get_connection();
 
-        conn.transaction::<_, diesel::result::Error, _>(|_| {
+        conn.transaction::<_, diesel::result::Error, _>(|conn| {
             for ContractDetails {
                 address,
                 name,
@@ -146,7 +149,7 @@ impl DataStore {
                         token_contracts::symbol.eq(symbol),
                     ))
                     .filter(token_contracts::address.eq::<&Vec<u8>>(&(*address).into()))
-                    .execute(&mut self.get_connection());
+                    .execute(conn);
                 handle_insert_result(result, 1, format!("insert_contract_details: {}", address))
             }
             Ok(())
@@ -157,18 +160,18 @@ impl DataStore {
     pub fn insert_contract_abis(&mut self, updates: &[(Address, ContractAbi)]) {
         let mut conn = self.get_connection();
 
-        conn.transaction::<_, diesel::result::Error, _>(|_| {
+        conn.transaction::<_, diesel::result::Error, _>(|conn| {
             for (address, abi) in updates.iter().cloned() {
                 let result = diesel::insert_into(contract_abis::dsl::contract_abis)
                     .values(abi.clone())
                     .on_conflict(contract_abis::uid)
                     .do_nothing()
-                    .execute(&mut self.get_connection());
+                    .execute(conn);
                 handle_insert_result(result, 1, format!("insert_abi for address: {}", address));
                 let contract_update_result = update(token_contracts::dsl::token_contracts)
                     .set(token_contracts::abi_id.eq::<Vec<u8>>(abi.clone().uid))
                     .filter(token_contracts::address.eq::<Vec<u8>>(address.into()))
-                    .execute(&mut self.get_connection());
+                    .execute(conn);
                 // Ensure contract exists and is updated.
                 assert_eq!(
                     handle_query_result(contract_update_result),
@@ -181,6 +184,68 @@ impl DataStore {
             Ok(())
         })
         .expect("contract_abi batch update");
+    }
+
+    pub fn mass_update(&mut self, updates: UpdateCache) {
+        let mut conn = self.get_connection();
+        let UpdateCache {
+            nfts,
+            multi_tokens,
+            multi_token_owners,
+            approval_for_alls,
+            contracts,
+            blocks,
+            transactions,
+        } = updates;
+        conn.transaction::<_, diesel::result::Error, _>(|conn| {
+            // Write transactions
+            if !transactions.is_empty() {
+                self.save_transactions(transactions.into_iter().collect(), Some(conn));
+            }
+            // Write blocks
+            if !blocks.is_empty() {
+                self.save_blocks(blocks.into_iter().collect(), Some(conn));
+            }
+
+            // Write contracts
+            if !contracts.is_empty() {
+                self.save_contracts(contracts.into_values().collect(), Some(conn));
+            }
+
+            // Write erc721
+            if !nfts.is_empty() {
+                tracing::info!("saving {} nfts", nfts.len());
+                for (_, nft_update) in nfts {
+                    self.save_nft(nft_update, Some(conn));
+                }
+            }
+
+            // Write and clear erc1155s
+            if !multi_tokens.is_empty() {
+                tracing::info!("saving {} erc1155s", multi_tokens.len());
+                for (_, token) in multi_tokens {
+                    DataStore::upsert_erc1155(conn, token);
+                }
+            }
+
+            // Write erc1155_owners
+            if !multi_token_owners.is_empty() {
+                tracing::info!("saving {} owners", multi_token_owners.len());
+                for (_, owner_updates) in multi_token_owners {
+                    DataStore::upsert_erc1155_owner(conn, owner_updates);
+                }
+            }
+
+            // Write approval_for_alls
+            if !approval_for_alls.is_empty() {
+                tracing::info!("saving {} approvals", approval_for_alls.len());
+                for (_, approval) in approval_for_alls {
+                    DataStore::upsert_approval_for_all(conn, approval);
+                }
+            }
+            Ok(())
+        })
+        .expect("failed mass_update");
     }
 
     pub fn load_nft(&mut self, token: &NftId) -> Option<Nft> {
@@ -261,7 +326,7 @@ impl DataStore {
         handle_query_result(result)
     }
 
-    pub fn save_transactions(&mut self, txs: Vec<Transaction>) {
+    fn save_transactions(&mut self, txs: Vec<Transaction>, conn: Option<&mut Connexion>) {
         // These inserts must be broken into chunks because of:
         // DatabaseError(UnableToSendCommand, "number of parameters must be between 0 and 65535\n")
         let chunk_size = 10_000;
@@ -270,189 +335,72 @@ impl DataStore {
             txs.len(),
             (txs.len() / chunk_size) + 1
         );
+        let mut binding = self.get_connection();
+        let conn = conn.unwrap_or(&mut binding);
         for chunk in txs.chunks(chunk_size) {
             let expected_inserts = chunk.len();
             let result = diesel::insert_into(transactions::dsl::transactions)
                 .values(chunk.to_vec())
                 .on_conflict((transactions::block_number, transactions::index))
                 .do_nothing()
-                .execute(&mut self.get_connection());
+                .execute(conn);
             handle_insert_result(result, expected_inserts, "save_transactions".to_string())
         }
     }
 
-    pub fn save_blocks(&mut self, blocks: Vec<BlockData>) {
+    fn save_blocks(&mut self, blocks: Vec<BlockData>, conn: Option<&mut Connexion>) {
         let chunk_size = 10_000;
         tracing::info!(
             "saving {} EVM blocks over {} SQL transactions",
             blocks.len(),
             (blocks.len() / chunk_size) + 1
         );
+        let mut binding = self.get_connection();
+        let conn = conn.unwrap_or(&mut binding);
         for chunk in blocks.chunks(chunk_size) {
             let expected_inserts = chunk.len();
             let result = diesel::insert_into(blocks::dsl::blocks)
                 .values(chunk.iter().map(Block::new).collect::<Vec<_>>())
                 .on_conflict(blocks::number)
                 .do_nothing()
-                .execute(&mut self.get_connection());
+                .execute(conn);
             handle_insert_result(result, expected_inserts, "save_blocks".to_string())
         }
     }
 
-    pub fn save_nft(&mut self, nft: Nft) {
+    pub fn save_nft(&mut self, nft: Nft, conn: Option<&mut Connexion>) {
         let token_id = nft.id();
         let result = diesel::insert_into(nfts::dsl::nfts)
             .values(nft.clone())
             .on_conflict((nfts::contract_address, nfts::token_id))
             .do_update()
             .set(nft)
-            .execute(&mut self.get_connection());
+            .execute(conn.unwrap_or(&mut self.get_connection()));
         handle_insert_result(result, 1, format!("save_nft: {}", token_id))
     }
 
-    pub async fn save_nfts(&mut self, nft_updates: Vec<Nft>) {
-        tracing::info!("saving {} nfts", nft_updates.len());
-        let mut tasks: Vec<tokio::task::JoinHandle<()>> = vec![];
-
-        for nft in nft_updates {
-            let pool = self.pool.clone();
-            tasks.push(tokio::spawn(async move {
-                let conn: &mut PooledConnection<ConnectionManager<PgConnection>> =
-                    &mut pool.get().unwrap();
-                Self::upsert_nft(conn, nft)
-            }))
-        }
-        let errors: Vec<tokio::task::JoinError> = futures::future::join_all(tasks)
-            .await
-            .into_iter()
-            .filter_map(|res| res.err())
-            .collect();
-
-        if !errors.is_empty() {
-            tracing::error!(
-                "failed to update {} nfts with errors {:?}",
-                errors.len(),
-                errors
-            );
-        }
-    }
-
-    pub async fn save_erc1155s(&mut self, updates: Vec<Erc1155>) {
-        tracing::info!("saving {} erc1155s", updates.len());
-        let mut tasks: Vec<tokio::task::JoinHandle<()>> = vec![];
-
-        for token in updates {
-            let pool = self.pool.clone();
-            tasks.push(tokio::spawn(async move {
-                let conn: &mut PooledConnection<ConnectionManager<PgConnection>> =
-                    &mut pool.get().unwrap();
-                Self::upsert_erc1155(conn, token)
-            }))
-        }
-        let errors: Vec<tokio::task::JoinError> = futures::future::join_all(tasks)
-            .await
-            .into_iter()
-            .filter_map(|res| res.err())
-            .collect();
-
-        if !errors.is_empty() {
-            tracing::error!(
-                "failed to update {} erc1155 with errors {:?}",
-                errors.len(),
-                errors
-            );
-        }
-    }
-
-    pub async fn save_erc1155_owners(&mut self, owner_updates: Vec<Erc1155Owner>) {
-        tracing::info!("saving {} owners", owner_updates.len());
-        let mut tasks: Vec<tokio::task::JoinHandle<()>> = vec![];
-
-        for owner in owner_updates {
-            let pool = self.pool.clone();
-            tasks.push(tokio::spawn(async move {
-                let conn: &mut PooledConnection<ConnectionManager<PgConnection>> =
-                    &mut pool.get().unwrap();
-                Self::upsert_erc1155_owner(conn, owner)
-            }))
-        }
-        let errors: Vec<tokio::task::JoinError> = futures::future::join_all(tasks)
-            .await
-            .into_iter()
-            .filter_map(|res| res.err())
-            .collect();
-
-        if !errors.is_empty() {
-            tracing::error!(
-                "failed to update {} erc1155 owners with errors {:?}",
-                errors.len(),
-                errors
-            );
-        }
-    }
-
-    pub async fn save_approval_for_alls(&mut self, approvals: Vec<ApprovalForAll>) {
-        tracing::info!("saving {} approvals", approvals.len());
-        let mut tasks: Vec<tokio::task::JoinHandle<()>> = vec![];
-
-        for approval in approvals {
-            let pool = self.pool.clone();
-            tasks.push(tokio::spawn(async move {
-                let conn: &mut PooledConnection<ConnectionManager<PgConnection>> =
-                    &mut pool.get().unwrap();
-                Self::upsert_approval_for_all(conn, approval)
-            }))
-        }
-        let errors: Vec<tokio::task::JoinError> = futures::future::join_all(tasks)
-            .await
-            .into_iter()
-            .filter_map(|res| res.err())
-            .collect();
-
-        if !errors.is_empty() {
-            tracing::error!(
-                "failed to update {} approval_for_alls with errors {:?}",
-                errors.len(),
-                errors
-            );
-        }
-    }
-
-    pub fn save_contract(&mut self, contract: TokenContract) {
+    pub fn save_contract(&mut self, contract: TokenContract, conn: Option<Connexion>) {
         let contract_address = contract.address;
         let result = diesel::insert_into(token_contracts::dsl::token_contracts)
             .values(contract.clone())
             .on_conflict(token_contracts::address)
             .do_update()
             .set(contract)
-            .execute(&mut self.get_connection());
+            .execute(&mut conn.unwrap_or(self.get_connection()));
         handle_insert_result(result, 1, format!("save_contract {:?}", contract_address))
     }
 
     /// This method, as opposed to its singular counter part may be used under the assumption
     /// that the contracts are not being updated during event handling.
-    pub fn save_contracts(&mut self, contracts: Vec<TokenContract>) {
+    pub fn save_contracts(&mut self, contracts: Vec<TokenContract>, conn: Option<&mut Connexion>) {
         let expected_inserts = contracts.len();
         tracing::info!("saving {} contracts", expected_inserts);
         let result = diesel::insert_into(token_contracts::dsl::token_contracts)
             .values(contracts)
             .on_conflict(token_contracts::address)
             .do_nothing()
-            .execute(&mut self.get_connection());
+            .execute(conn.unwrap_or(&mut self.get_connection()));
         handle_insert_result(result, expected_inserts, "save_contracts".to_string())
-    }
-
-    pub fn upsert_approval_for_all(
-        conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
-        approval: ApprovalForAll,
-    ) {
-        let result = diesel::insert_into(approval_for_all::dsl::approval_for_all)
-            .values(approval.clone())
-            .on_conflict((approval_for_all::contract_address, approval_for_all::owner))
-            .do_update()
-            .set(approval.clone())
-            .execute(conn);
-        handle_insert_result(result, 1, format!("set_approval_for_all {:?}", approval))
     }
 
     pub fn load_or_initialize_nft(
@@ -516,18 +464,17 @@ impl DataStore {
         }
     }
 
-    fn upsert_nft(conn: &mut PooledConnection<ConnectionManager<PgConnection>>, nft: Nft) {
-        let token_id = nft.id();
-        let result = diesel::insert_into(nfts::dsl::nfts)
-            .values(nft.clone())
-            .on_conflict((nfts::contract_address, nfts::token_id))
+    pub fn upsert_approval_for_all(conn: &mut Connexion, approval: ApprovalForAll) {
+        let result = diesel::insert_into(approval_for_all::dsl::approval_for_all)
+            .values(approval.clone())
+            .on_conflict((approval_for_all::contract_address, approval_for_all::owner))
             .do_update()
-            .set(nft)
+            .set(approval.clone())
             .execute(conn);
-        handle_insert_result(result, 1, format!("save_nft: {}", token_id))
+        handle_insert_result(result, 1, format!("set_approval_for_all {:?}", approval))
     }
 
-    fn upsert_erc1155(conn: &mut PooledConnection<ConnectionManager<PgConnection>>, nft: Erc1155) {
+    fn upsert_erc1155(conn: &mut Connexion, nft: Erc1155) {
         let token_id = nft.id();
         let result = diesel::insert_into(erc1155s::dsl::erc1155s)
             .values(nft.clone())
@@ -538,10 +485,7 @@ impl DataStore {
         handle_insert_result(result, 1, format!("save_erc1155: {}", token_id))
     }
 
-    fn upsert_erc1155_owner(
-        conn: &mut PooledConnection<ConnectionManager<PgConnection>>,
-        owner: Erc1155Owner,
-    ) {
+    fn upsert_erc1155_owner(conn: &mut Connexion, owner: Erc1155Owner) {
         let owner_address = owner.owner;
         let result = diesel::insert_into(erc1155_owners::dsl::erc1155_owners)
             .values(owner.clone())
@@ -639,10 +583,13 @@ mod tests {
             to: Some(Address::from(2)),
         };
         // First call should not panic or log
-        store.save_transactions(vec![
-            Transaction::new(1, 2, &details),
-            Transaction::new(3, 4, &details),
-        ]);
+        store.save_transactions(
+            vec![
+                Transaction::new(1, 2, &details),
+                Transaction::new(3, 4, &details),
+            ],
+            None,
+        );
 
         assert_eq!(
             Ok(2),
@@ -652,10 +599,13 @@ mod tests {
         );
 
         // This call will do nothing.
-        store.save_transactions(vec![
-            // Notice same (block, index) = (1, 2) as above.
-            Transaction::new(1, 2, &details),
-        ]);
+        store.save_transactions(
+            vec![
+                // Notice same (block, index) = (1, 2) as above.
+                Transaction::new(1, 2, &details),
+            ],
+            None,
+        );
         assert_eq!(
             Ok(2),
             transactions::dsl::transactions
@@ -685,7 +635,7 @@ mod tests {
                 ..Default::default()
             },
         ];
-        store.save_blocks(blocks);
+        store.save_blocks(blocks, None);
         assert_eq!(
             Ok(3),
             blocks::dsl::blocks
@@ -694,8 +644,8 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn save_and_load_nft() {
+    #[test]
+    fn save_and_load_nft() {
         let mut store = get_new_store();
         let base = test_event_base();
         let token = NftId {
@@ -708,7 +658,7 @@ mod tests {
             to: Some(Address::from(2)),
         };
         let nft = Nft::new(&base, &token, &tx);
-        store.save_nfts(vec![nft.clone()]).await;
+        store.save_nft(nft.clone(), None);
         assert_eq!(store.load_nft(&token).unwrap(), nft);
     }
 
@@ -737,7 +687,7 @@ mod tests {
         let base = test_event_base();
         let contract = TokenContract::from_event_base(&base);
         assert!(store.load_contract(base.contract_address).is_none());
-        store.save_contract(contract);
+        store.save_contract(contract, None);
         assert!(store.load_contract(base.contract_address).is_some());
     }
 
@@ -758,12 +708,12 @@ mod tests {
             to: Some(Address::from(2)),
         };
         // We have to add the contract because of the Foreign Key constraint Erc1155 >- Contracts.
-        store.save_contract(TokenContract::from_event_base(&base));
+        store.save_contract(TokenContract::from_event_base(&base), None);
 
         let nft = Nft::new(&base, &erc721_id, &tx);
         base.block_number += 1;
         let erc1155 = Erc1155::new(&base, &erc1155_id, &tx);
-        store.save_nft(nft.clone());
+        store.save_nft(nft.clone(), None);
         DataStore::upsert_erc1155(&mut store.get_connection(), erc1155.clone());
         (store, erc721_id, erc1155_id)
     }
@@ -844,7 +794,7 @@ mod tests {
         assert!(store.load_contract(address).is_none());
 
         // Contract must exist before abi can be added!
-        store.save_contract(TokenContract::from_event_base(&base));
+        store.save_contract(TokenContract::from_event_base(&base), None);
         let contract_abi = ContractAbi {
             uid: uid.clone(),
             abi: Some(serde_json::json!("Ultimate ABI")),
