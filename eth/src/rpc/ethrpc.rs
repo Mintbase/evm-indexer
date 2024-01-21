@@ -8,7 +8,7 @@ use ethrpc::{
     types::TransactionCall,
     types::*,
 };
-use futures::future::{join, join_all};
+use futures::future::join_all;
 use solabi::{decode::Decode, encode::Encode, selector, FunctionEncoder};
 use std::{collections::HashMap, fmt::Debug};
 
@@ -132,7 +132,7 @@ impl EthNodeReading for Client {
                 .call(eth::Call, (Self::symbol_call(addr), BlockId::default()))
         });
 
-        let (names, symbols) = join(join_all(name_futures), join_all(symbol_futures)).await;
+        let (names, symbols) = (join_all(name_futures).await, join_all(symbol_futures).await);
         tracing::debug!("complete {} contract details requests", addresses.len());
 
         addresses
