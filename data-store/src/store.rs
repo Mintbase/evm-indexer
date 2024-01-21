@@ -186,9 +186,9 @@ impl DataStore {
         .expect("contract_abi batch update");
     }
 
-    pub fn mass_update(&mut self, updates: UpdateCache) {
-        let mut conn = self.get_connection();
-        let UpdateCache {
+    pub fn mass_update(
+        &mut self,
+        UpdateCache {
             nfts,
             multi_tokens,
             multi_token_owners,
@@ -196,7 +196,9 @@ impl DataStore {
             contracts,
             blocks,
             transactions,
-        } = updates;
+        }: UpdateCache,
+    ) {
+        let mut conn = self.get_connection();
         conn.transaction::<_, diesel::result::Error, _>(|conn| {
             // Write transactions
             if !transactions.is_empty() {
