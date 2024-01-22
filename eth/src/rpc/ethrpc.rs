@@ -1,15 +1,16 @@
 use crate::types::{Address, BlockData, ContractDetails, NftId, TxDetails};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use ethrpc::http::Error;
 use ethrpc::{
     eth,
-    http::{buffered::Configuration, reqwest::Url, Error},
+    http::{buffered::Configuration, reqwest::Url, Error as EthRpcError},
     types::TransactionCall,
     types::*,
 };
-use futures::future::{join, join_all};
+use futures::future::join_all;
 use solabi::{decode::Decode, encode::Encode, selector, FunctionEncoder};
-use std::{collections::HashMap, fmt::Debug, time::Duration};
+use std::{collections::HashMap, fmt::Debug};
 
 use super::EthNodeReading;
 
@@ -19,6 +20,36 @@ const TOKEN_URI: FunctionEncoder<(U256,), (String,)> =
     FunctionEncoder::new(selector!("tokenURI(uint256)"));
 pub struct Client {
     provider: ethrpc::http::Buffered,
+}
+
+fn handle_error(error: EthRpcError, context: &str) {
+    match error {
+        Error::Json(err) => {
+            panic!("Json Error {}", err);
+        }
+        Error::Http(err) => {
+            panic!("Http Error {}", err);
+        }
+        Error::Status(code, message) => {
+            panic!("Status Error with code {code} and message {}", message);
+        }
+        Error::Rpc(err) => {
+            let known_rpc_errors = [
+                // Contract does not have attempted functionality
+                // or function exists and some assertion failed.
+                "execution reverted",
+                // Contract method is unable to respond to the given input.
+                "out of gas",
+            ];
+            if !(known_rpc_errors.iter().any(|e| err.message.contains(e))) {
+                tracing::warn!("request failed: {context} with {err:?}");
+            }
+            // Contract function does not exist or no longer returns a value for given input.
+        }
+        Error::Batch(err) => {
+            panic!("Batch Error {}", err);
+        }
+    }
 }
 
 #[async_trait]
@@ -76,7 +107,7 @@ impl EthNodeReading for Client {
         });
 
         let uri_results = join_all(futures).await;
-
+        tracing::debug!("completed tokenUri requests");
         token_ids
             .iter()
             .zip(uri_results)
@@ -84,7 +115,7 @@ impl EthNodeReading for Client {
                 let uri = match uri_result {
                     Ok(bytes) => Self::decode_function_result_string(bytes, TOKEN_URI),
                     Err(err) => {
-                        tracing::warn!("request outcome failed for {:?} with {:?}", id, err);
+                        handle_error(err, &format!("tokenUri for {id:?}"));
                         None
                     }
                 };
@@ -108,8 +139,8 @@ impl EthNodeReading for Client {
                 .call(eth::Call, (Self::symbol_call(addr), BlockId::default()))
         });
 
-        let (names, symbols) = join(join_all(name_futures), join_all(symbol_futures)).await;
-        tracing::debug!("Complete {} Contract Details Requests", addresses.len());
+        let (names, symbols) = (join_all(name_futures).await, join_all(symbol_futures).await);
+        tracing::debug!("complete {} contract details requests", addresses.len());
 
         addresses
             .iter()
@@ -118,14 +149,14 @@ impl EthNodeReading for Client {
                 let name = match name_result {
                     Ok(name) => Self::decode_function_result_string(name, NAME),
                     Err(err) => {
-                        tracing::warn!("name request failed for {:?} with {}", address.0, err);
+                        handle_error(err, &format!("name for {address}"));
                         None
                     }
                 };
                 let symbol = match symbol_result {
                     Ok(symbol) => Self::decode_function_result_string(symbol, SYMBOL),
                     Err(err) => {
-                        tracing::warn!("symbol request failed for {:?} with {}", address.0, err);
+                        handle_error(err, &format!("symbol for {address}"));
                         None
                     }
                 };
@@ -144,12 +175,9 @@ impl EthNodeReading for Client {
 
 impl Client {
     pub fn new(url: &str) -> Result<Self> {
-        let config = Configuration {
-            delay: Duration::from_millis(20),
-            ..Default::default()
-        };
         Ok(Self {
-            provider: ethrpc::http::Client::new(Url::parse(url)?).buffered(config),
+            provider: ethrpc::http::Client::new(Url::parse(url)?)
+                .buffered(Configuration::default()),
         })
     }
 
@@ -194,7 +222,10 @@ impl Client {
         match encoder.decode_returns(&res) {
             Ok(decoded_string) => Some(decoded_string.0.replace('\0', "")),
             Err(err) => {
-                tracing::warn!("failed to decode bytes {:?} with {}", res, err);
+                if !res.is_empty() {
+                    // Only log if result is non-empty
+                    tracing::warn!("failed to decode bytes {:?} with {}", res, err);
+                }
                 None
             }
         }
@@ -206,6 +237,7 @@ mod tests {
 
     use super::*;
     use crate::types::U256;
+    use ethrpc::jsonrpc;
     use maplit::hashmap;
     use std::str::FromStr;
 
@@ -335,5 +367,13 @@ mod tests {
                 null_bytes => Some("https://5h5jydmla4qvcjvmdgcgnnkdhy0ddrod.lambda-url.us-east-2.on.aws/?id=10063&data=".into())
             }
         );
+    }
+
+    #[test]
+    fn error_handling() {
+        let inner_error = jsonrpc::Error::custom("execution reverted");
+        assert!(inner_error.message.contains("execution reverted"));
+        let rpc_error = EthRpcError::Rpc(inner_error);
+        handle_error(rpc_error, "test");
     }
 }
