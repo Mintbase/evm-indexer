@@ -1,12 +1,12 @@
 use crate::{
     config::{ChainDataSource, HandlerConfig},
     handlers::EventHandler,
-    update_cache::UpdateCache,
 };
 use anyhow::{Context, Result};
 use data_store::{
     models::{TokenContract, Transaction},
     store::DataStore,
+    update_cache::UpdateCache,
 };
 use eth::{rpc::ethrpc::Client as EthRpcClient, rpc::EthNodeReading, types::BlockData};
 use event_retriever::db_reader::{
@@ -128,26 +128,35 @@ impl EventProcessor {
                     .as_slice(),
             )
             .await;
-        tracing::info!(
-            "retrieved missing node data for {} contracts and {} tokens",
-            contract_details.len(),
-            missing_uris.len()
-        );
+        let mut uri_count = 0;
         for (id, possible_uri) in missing_uris.drain() {
             if let Some(uri) = possible_uri {
+                uri_count += 1;
                 self.updates.nfts.get_mut(&id).expect("known").token_uri = Some(uri);
             }
         }
 
+        let mut contract_details_count = contract_details.len();
         for (address, details) in contract_details.drain() {
-            let contract = self
-                .updates
-                .contracts
-                .get_mut(&address)
-                .expect("known to exist");
-            contract.name = details.name;
-            contract.symbol = details.symbol;
+            if details.name.is_none() && details.symbol.is_none() {
+                // decrement data count.
+                contract_details_count -= 1;
+            } else {
+                // At least one non-trivial value:
+                let contract = self
+                    .updates
+                    .contracts
+                    .get_mut(&address)
+                    .expect("known to exist");
+                contract.name = details.name;
+                contract.symbol = details.symbol;
+            }
         }
+        tracing::info!(
+            "retrieved missing node data for {} contracts and {} tokens",
+            contract_details_count,
+            uri_count
+        );
     }
 
     async fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
@@ -196,11 +205,17 @@ impl EventProcessor {
         }
 
         self.get_missing_node_data().await;
-
-        // Drain cache and write to store
-        self.updates.write(&mut self.store).await;
+        self.write_and_clear_updates();
+        // self.updates.write(&mut self.store).await;
         // TODO: Retrieve off-chain metadata. AFTER updates (since records must exist in DB)
         Ok(())
+    }
+
+    fn write_and_clear_updates(&mut self) {
+        // Drain cache and write to store
+        let updates = std::mem::take(&mut self.updates);
+        self.store.mass_update(updates);
+        assert!(self.updates.is_empty());
     }
 }
 
