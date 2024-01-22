@@ -34,7 +34,14 @@ fn handle_error(error: EthRpcError, context: &str) {
             panic!("Status Error with code {code} and message {}", message);
         }
         Error::Rpc(err) => {
-            if !err.message.contains("execution reverted") {
+            let known_rpc_errors = [
+                // Contract does not have attempted functionality
+                // or function exists and some assertion failed.
+                "execution reverted",
+                // Contract method is unable to respond to the given input.
+                "out of gas",
+            ];
+            if !(known_rpc_errors.iter().any(|e| err.message.contains(e))) {
                 tracing::warn!("request failed: {context} with {err:?}");
             }
             // Contract function does not exist or no longer returns a value for given input.
