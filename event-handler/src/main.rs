@@ -15,8 +15,6 @@ async fn main() -> Result<()> {
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    // let config = HandlerConfig::from_path(&args.config);
-
     let mut handler = EventProcessor::new(
         args.source_url.as_str(),
         args.store_url.as_str(),
@@ -25,6 +23,7 @@ async fn main() -> Result<()> {
             chain_data_source: args.chain_source,
             page_size: args.page_size,
             fetch_node_data: !args.skip_node_fetching,
+            db_schema: args.db_schema,
         },
     )
     .expect("error constructing EventProcessor");
