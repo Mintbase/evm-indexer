@@ -36,10 +36,13 @@ pub type BlockEvents = BTreeMap<(TxIndex, LogIndex), Vec<NftEvent>>;
 pub type BlockRangeEvents = BTreeMap<BlockNum, BlockEvents>;
 
 impl EventSource {
-    pub fn new(connection: &str) -> Result<Self> {
-        Ok(Self {
-            client: Self::establish_connection(connection)?,
-        })
+    pub fn new(connection: &str, schema: &str) -> Result<Self> {
+        let mut conn = Self::establish_connection(connection)?;
+        diesel::sql_query(format!("SET search_path TO {schema};"))
+            .execute(&mut conn)
+            .expect("Error setting search path");
+
+        Ok(Self { client: conn })
     }
 
     fn establish_connection(db_url: &str) -> Result<PgConnection> {
@@ -265,7 +268,7 @@ mod tests {
     }
 
     fn test_client() -> EventSource {
-        EventSource::new(TEST_DB_URL).unwrap()
+        EventSource::new(TEST_DB_URL, "public").unwrap()
     }
 
     #[test]
@@ -369,7 +372,7 @@ mod tests {
         // 0x5dd5fa286c0944011f13dfa982f06e20c29eef3abc26a1bde096db0faefee454
         // Check them out on https://etherscan.io
 
-        let mut client = EventSource::new(TEST_DB_URL).unwrap();
+        let mut client = test_client();
         let batch_transfers: Vec<_> = client
             .get_erc1155_transfers_batch_for_block_range(single_block_range(15_000_741))
             .unwrap()
@@ -407,7 +410,7 @@ mod tests {
     fn get_events_for_block() {
         // This test uses a block 15_001_141 containing more than 1 relevant event type
         // This test also demonstrates correctness of Diesel EVM Types.
-        let mut client = EventSource::new(TEST_DB_URL).unwrap();
+        let mut client = test_client();
         let batch_transfers: BlockEvents = client.get_events_for_block(15_001_141).unwrap();
         assert_eq!(
             batch_transfers,

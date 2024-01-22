@@ -35,9 +35,10 @@ impl EventProcessor {
         eth_rpc: &str,
         config: HandlerConfig,
     ) -> Result<Self> {
+        let schema = &config.db_schema;
         Ok(Self {
-            source: EventSource::new(source_url).context("init EventSource")?,
-            store: DataStore::new(store_url).context("init DataStore")?,
+            source: EventSource::new(source_url, schema).context("init EventSource")?,
+            store: DataStore::new(store_url, schema).context("init DataStore")?,
             updates: UpdateCache::default(),
             eth_client: Arc::new(EthRpcClient::new(eth_rpc).context("init EthRpcClient")?),
             config,
@@ -237,6 +238,7 @@ mod tests {
                 chain_data_source: ChainDataSource::Database,
                 page_size: 100,
                 fetch_node_data: false,
+                db_schema: "public".to_string(),
             },
         )
         .unwrap()

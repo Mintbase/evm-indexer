@@ -71,6 +71,7 @@ pub mod test_util {
                 chain_data_source: ChainDataSource::Database,
                 page_size: 10,
                 fetch_node_data: false,
+                db_schema: "public".to_string(),
             },
         )
         .unwrap()

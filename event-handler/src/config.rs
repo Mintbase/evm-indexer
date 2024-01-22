@@ -17,6 +17,8 @@ pub struct HandlerConfig {
     pub page_size: i64,
     /// True when this service is responsible for fetching missing node data.
     pub fetch_node_data: bool,
+    /// Store Database schema name
+    pub db_schema: String,
 }
 
 impl HandlerConfig {

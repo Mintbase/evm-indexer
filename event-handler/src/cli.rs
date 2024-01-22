@@ -12,6 +12,10 @@ pub struct Args {
     #[clap(long, env)]
     pub store_url: Url,
 
+    /// DB schema (should be the same for both source and store)
+    #[clap(long, env)]
+    pub db_schema: String,
+
     /// The Ethereum RPC endpoint.
     #[clap(long, env)]
     pub node_url: Url,

@@ -50,7 +50,7 @@ fn handle_query_result<T>(result: QueryResult<T>) -> T {
 }
 
 impl DataStore {
-    pub fn new(connection: &str) -> Result<Self> {
+    pub fn new(connection: &str, schema: &str) -> Result<Self> {
         let pool_size = std::env::var("STORE_POOL_SIZE")
             .unwrap_or("20".to_string())
             .parse::<u32>()
@@ -59,9 +59,12 @@ impl DataStore {
             .unwrap_or("10".to_string())
             .parse::<usize>()
             .context("parse num_threads")?;
-        Ok(Self {
-            pool: Self::get_connection_pool(connection, pool_size, num_threads)?,
-        })
+
+        let pool = Self::get_connection_pool(connection, pool_size, num_threads)?;
+        diesel::sql_query(format!("SET search_path TO {schema};"))
+            .execute(&mut pool.get()?)
+            .expect("Error setting search path");
+        Ok(Self { pool })
     }
 
     fn get_connection(&self) -> Connexion {
@@ -528,7 +531,7 @@ mod tests {
     static TEST_STORE_URL: &str = "postgresql://postgres:postgres@localhost:5432/store";
 
     fn get_new_store() -> DataStore {
-        let mut store = DataStore::new(TEST_STORE_URL).unwrap();
+        let mut store = DataStore::new(TEST_STORE_URL, "public").unwrap();
         store.clear_tables();
         store
     }
