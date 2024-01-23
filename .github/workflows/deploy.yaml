@@ -38,7 +38,7 @@ jobs:
 
       - name: Migration Metadata
         uses: docker/metadata-action@v4
-        id: indexer
+        id: migrations
         with:
           images: ghcr.io/${{ github.repository }}-migration
       - name: Migration Image Build
