@@ -13,8 +13,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
-        with:
-          fetch-depth: '0'
 
       - uses: docker/login-action@v2
         with:
@@ -33,12 +31,12 @@ jobs:
           context: .
           file: docker/Dockerfile.binary
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.indexer.outputs.tags }}
+          labels: ${{ steps.indexer.outputs.labels }}
 
       - name: Migration Metadata
         uses: docker/metadata-action@v4
-        id: migrations
+        id: migration
         with:
           images: ghcr.io/${{ github.repository }}-migration
       - name: Migration Image Build
@@ -47,5 +45,5 @@ jobs:
           context: .
           file: docker/Dockerfile.migration
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.migration.outputs.tags }}
+          labels: ${{ steps.migration.outputs.labels }}
