@@ -19,6 +19,8 @@ pub struct HandlerConfig {
     pub fetch_node_data: bool,
     /// Store Database schema name
     pub db_schema: String,
+    /// How many blocks after mint should we give up trying to retrieve tokenUri
+    pub uri_retry_blocks: i64,
 }
 
 impl HandlerConfig {
