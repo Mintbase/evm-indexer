@@ -32,6 +32,10 @@ pub struct Args {
     #[clap(long, env, default_value = "1000")]
     pub page_size: i64,
 
+    /// TokenUri retry blocks
+    #[clap(long, env, default_value = "1000")]
+    pub uri_retry_blocks: i64,
+
     /// Include to skip additional on-chain data fetching
     #[clap(long, env)]
     pub skip_node_fetching: bool,

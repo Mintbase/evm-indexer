@@ -24,6 +24,7 @@ async fn main() -> Result<()> {
             page_size: args.page_size,
             fetch_node_data: !args.skip_node_fetching,
             db_schema: args.db_schema,
+            uri_retry_blocks: args.uri_retry_blocks,
         },
     )
     .expect("error constructing EventProcessor");

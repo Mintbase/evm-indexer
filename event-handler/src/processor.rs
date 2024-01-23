@@ -117,7 +117,11 @@ impl EventProcessor {
                     .into_iter()
                     // Without additional specification here this will retry to fetch things
                     // We can prevent this by perhaps by filtering also for range.start < mint_block
-                    .filter(|(_, token)| token.token_uri.is_none())
+                    .filter(|(_, token)| {
+                        token.token_uri.is_none()
+                            && token.last_update_block - token.mint_block
+                                < self.config.uri_retry_blocks
+                    })
                     .map(|(id, _)| id)
                     .collect::<Vec<_>>()
                     .as_slice(),
@@ -239,6 +243,7 @@ mod tests {
                 page_size: 100,
                 fetch_node_data: false,
                 db_schema: "public".to_string(),
+                uri_retry_blocks: 100,
             },
         )
         .unwrap()
