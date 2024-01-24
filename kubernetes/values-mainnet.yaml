@@ -1,7 +1,7 @@
 global:
   Namespace: default
   PodName: event-processor
-  ContainerRepo: gcr.io/eth-cloud-mb/
+  ContainerRepo: gcr.io/eth-cloud-mb
   ProjectName: evm-indexer
   ImageTag: latest
   Network: mainnet
