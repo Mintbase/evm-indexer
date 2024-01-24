@@ -115,7 +115,7 @@ impl EthNodeReading for Client {
                 let uri = match uri_result {
                     Ok(bytes) => Self::decode_function_result_string(bytes, TOKEN_URI),
                     Err(err) => {
-                        handle_error(err, &format!("tokenUri for {id:?}"));
+                        handle_error(err, &format!("tokenUri for {id}"));
                         None
                     }
                 };
