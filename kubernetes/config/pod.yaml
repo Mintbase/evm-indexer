@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .ProjectName }}-processor
+  namespace: {{ .Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .ProjectName }}
+  template:
+    metadata:
+      labels:
+        app: {{ .ProjectName }}
+    spec:
+      containers:
+      - name: {{ .ProjectName }}
+        image: {{ .ContainerRepo }}/{{ .ProjectName }}:{{ .ImageTag }}
+        imagePullPolicy: Always
+        args: ["event-handler"]
+        env:
+          - name: LOG
+            value: "info,event_handler=debug,eth=debug"
+          - name: DB_SCHEMA
+            value: {{ .Network }}
+          - name: CHAIN_SOURCE
+            value: "database"
+          - name: PAGE_SIZE
+            value: "20000"
+          - name: NODE_URL
+            valueFrom:
+              secretKeyRef:
+                name: indexer-secrets
+                key: NODE_URL
+
+          - name: SOURCE_URL
+            valueFrom:
+              secretKeyRef:
+                name: indexer-secrets
+                key: SOURCE_URL
+
+          - name: STORE_URL
+            valueFrom:
+              secretKeyRef:
+                name: indexer-secrets
+                key: STORE_URL
