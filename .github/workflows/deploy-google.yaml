@@ -26,8 +26,8 @@ jobs:
 
       - name: Build and Push Binary & Migration Images
         run: |
-          BINARY_IMAGE=gcr.io/eth-cloud-mb/event-processor:latest
-          MIGRATION_IMAGE=gcr.io/eth-cloud-mb/store-migration:latest
+          BINARY_IMAGE=gcr.io/eth-cloud-mb/evm-indexer:latest
+          MIGRATION_IMAGE=gcr.io/eth-cloud-mb/evm-indexer-migration:latest
           DOCKERFILE_PATH=docker/Dockerfile
 
           docker build -t $BINARY_IMAGE -f $DOCKERFILE_PATH.binary .
