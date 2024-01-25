@@ -36,7 +36,7 @@ pub struct Args {
     #[clap(long, env, default_value = "1000")]
     pub uri_retry_blocks: i64,
 
-    /// Wait time between buffered requests (Eth Rpc)
+    /// Wait time between buffered requests in milliseconds (Eth Rpc)
     #[clap(long, env, default_value = "20")]
     pub node_batch_delay: u64,
 
