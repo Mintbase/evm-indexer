@@ -13,6 +13,15 @@ spec:
       labels:
         app: {{ .ProjectName }}
     spec:
+      initContainers:
+        - name: migration
+          image: {{ .ContainerRepo }}/{{ .ProjectName }}-migration:{{ .ImageTag }}
+          env:
+          - name: DATABASE_URL
+            valueFrom:
+              secretKeyRef:
+                name: indexer-secrets
+                key: STORE_URL
       containers:
       - name: {{ .ProjectName }}
         image: {{ .ContainerRepo }}/{{ .ProjectName }}:{{ .ImageTag }}
