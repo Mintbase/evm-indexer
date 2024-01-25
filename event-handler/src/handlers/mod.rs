@@ -73,6 +73,7 @@ pub mod test_util {
                 fetch_node_data: false,
                 db_schema: "public".to_string(),
                 uri_retry_blocks: 10,
+                batch_delay: 1,
             },
         )
         .unwrap()

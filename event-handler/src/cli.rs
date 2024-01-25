@@ -36,6 +36,10 @@ pub struct Args {
     #[clap(long, env, default_value = "1000")]
     pub uri_retry_blocks: i64,
 
+    /// Wait time between buffered requests (Eth Rpc)
+    #[clap(long, env, default_value = "20")]
+    pub node_batch_delay: u64,
+
     /// Include to skip additional on-chain data fetching
     #[clap(long, env)]
     pub skip_node_fetching: bool,
