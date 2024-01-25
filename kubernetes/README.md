@@ -12,7 +12,7 @@ From within this directory
 echo -n 'Your secret value' | base64
 ```
 
-2. Put into the [secrets files](./config/secrets.yaml) in place of `DO_NOT_ACTUALLY_PUT_SECRETS_HERE`
+2. Put into the [secrets files](./config/secrets.example.yaml) in place of `DO_NOT_ACTUALLY_PUT_SECRETS_HERE`
 
 
 3. Apply secrets
