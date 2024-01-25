@@ -21,6 +21,8 @@ pub struct HandlerConfig {
     pub db_schema: String,
     /// How many blocks after mint should we give up trying to retrieve tokenUri
     pub uri_retry_blocks: i64,
+    /// Node Batch Request Delay (ms)
+    pub batch_delay: u64,
 }
 
 impl HandlerConfig {

@@ -40,7 +40,9 @@ impl EventProcessor {
             source: EventSource::new(source_url, schema).context("init EventSource")?,
             store: DataStore::new(store_url, schema).context("init DataStore")?,
             updates: UpdateCache::default(),
-            eth_client: Arc::new(EthRpcClient::new(eth_rpc).context("init EthRpcClient")?),
+            eth_client: Arc::new(
+                EthRpcClient::new(eth_rpc, config.batch_delay).context("init EthRpcClient")?,
+            ),
             config,
         })
     }
@@ -244,6 +246,7 @@ mod tests {
                 fetch_node_data: false,
                 db_schema: "public".to_string(),
                 uri_retry_blocks: 100,
+                batch_delay: 1,
             },
         )
         .unwrap()

@@ -10,6 +10,7 @@ use ethrpc::{
 };
 use futures::future::join_all;
 use solabi::{decode::Decode, encode::Encode, selector, FunctionEncoder};
+use std::time::Duration;
 use std::{collections::HashMap, fmt::Debug};
 
 use super::EthNodeReading;
@@ -174,10 +175,12 @@ impl EthNodeReading for Client {
 }
 
 impl Client {
-    pub fn new(url: &str) -> Result<Self> {
+    pub fn new(url: &str, batch_delay: u64) -> Result<Self> {
         Ok(Self {
-            provider: ethrpc::http::Client::new(Url::parse(url)?)
-                .buffered(Configuration::default()),
+            provider: ethrpc::http::Client::new(Url::parse(url)?).buffered(Configuration {
+                delay: Duration::from_millis(batch_delay),
+                ..Default::default()
+            }),
         })
     }
 
@@ -244,7 +247,7 @@ mod tests {
     static FREE_ETH_RPC: &str = "https://rpc.ankr.com/eth";
 
     fn test_client() -> Client {
-        Client::new(FREE_ETH_RPC).expect("Needed for test")
+        Client::new(FREE_ETH_RPC, 0).expect("Needed for test")
     }
 
     #[tokio::test]
