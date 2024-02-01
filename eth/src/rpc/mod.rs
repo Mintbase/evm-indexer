@@ -25,6 +25,10 @@ pub trait EthNodeReading: Send + Sync {
         HashMap<NftId, Option<String>>,
         HashMap<Address, ContractDetails>,
     ) {
-        futures::future::join(self.get_uris(tokens), self.get_contract_details(addresses)).await
+        // futures::future::join(self.get_uris(tokens), self.get_contract_details(addresses)).await
+        (
+            self.get_uris(tokens).await,
+            self.get_contract_details(addresses).await,
+        )
     }
 }

@@ -1,0 +1,49 @@
+name: deploy
+on:
+  push:
+    branches: [main]
+    tags: [v*]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Indexer Metadata
+        uses: docker/metadata-action@v4
+        id: indexer
+        with:
+          images: ghcr.io/${{ github.repository }}
+      - name: Indexer Image Build
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: docker/Dockerfile.binary
+          push: true
+          tags: ${{ steps.indexer.outputs.tags }}
+          labels: ${{ steps.indexer.outputs.labels }}
+
+      - name: Migration Metadata
+        uses: docker/metadata-action@v4
+        id: migration
+        with:
+          images: ghcr.io/${{ github.repository }}-migration
+      - name: Migration Image Build
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: docker/Dockerfile.migration
+          push: true
+          tags: ${{ steps.migration.outputs.tags }}
+          labels: ${{ steps.migration.outputs.labels }}

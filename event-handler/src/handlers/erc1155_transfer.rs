@@ -97,6 +97,7 @@ mod tests {
                 // Note that we did not mint first so this transferred value
                 // is not realized in the total supply
                 total_supply: 0.into(),
+                metadata_id: None,
                 last_update_block: base.block_number as i64,
                 last_update_tx: base.transaction_index as i64,
                 last_update_log_index: base.log_index as i64,
@@ -164,6 +165,7 @@ mod tests {
                 token_id: id.into(),
                 token_uri: None,
                 total_supply: 0.into(),
+                metadata_id: None,
                 last_update_block: base_2.block_number as i64,
                 last_update_tx: base_2.transaction_index as i64,
                 last_update_log_index: base_2.log_index as i64,
@@ -226,6 +228,7 @@ mod tests {
                 token_id: id.into(),
                 token_uri: None,
                 total_supply: value.into(),
+                metadata_id: None,
                 last_update_block: mint_base.block_number as i64,
                 last_update_tx: mint_base.transaction_index as i64,
                 last_update_log_index: mint_base.log_index as i64,
@@ -288,6 +291,7 @@ mod tests {
                 token_id: id.into(),
                 token_uri: None,
                 total_supply: 0.into(),
+                metadata_id: None,
                 last_update_block: base_4.block_number as i64,
                 last_update_tx: base_4.transaction_index as i64,
                 last_update_log_index: base_4.log_index as i64,

@@ -15,6 +15,11 @@ use std::{
     str::FromStr,
 };
 
+/// ENS registry address (`0x57F1887A8BF19B14FC0DF6FD9B2ACC9AF147EA85`)
+pub const ENS_ADDRESS: Address = Address(H160([
+    87, 241, 136, 122, 139, 241, 155, 20, 252, 13, 246, 253, 155, 42, 204, 154, 241, 71, 234, 133,
+]));
+
 /// An address. Can be an EOA or a smart contract address.
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, SqlType, Deserialize)]
 pub struct Address(pub H160);

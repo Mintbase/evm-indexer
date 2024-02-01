@@ -49,6 +49,7 @@ mod tests {
                 // Note that we did not mint first so this transferred value
                 // is not realized in the total supply
                 total_supply: 0.into(),
+                metadata_id: None,
                 last_update_block: base.block_number as i64,
                 last_update_tx: base.transaction_index as i64,
                 last_update_log_index: base.log_index as i64,
@@ -77,6 +78,7 @@ mod tests {
                 // Note that we did not mint first so this transferred value
                 // is not realized in the total supply
                 total_supply: 0.into(),
+                metadata_id: None,
                 last_update_block: base.block_number as i64,
                 last_update_tx: base.transaction_index as i64,
                 last_update_log_index: base.log_index as i64,

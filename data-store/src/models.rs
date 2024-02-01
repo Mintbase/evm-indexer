@@ -53,12 +53,34 @@ impl ApprovalForAll {
     }
 }
 
-#[derive(Queryable, Selectable, Insertable, Serialize, Debug)]
+#[derive(Queryable, Selectable, Insertable, Serialize, Debug, Clone, PartialEq)]
 #[diesel(table_name = contract_abis)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ContractAbi {
-    address: Address,
-    abi: Option<Value>,
+    pub uid: Vec<u8>,
+    pub abi: Option<Value>,
+}
+
+#[derive(Queryable, Selectable, Insertable, Serialize, Debug, Clone, PartialEq)]
+#[diesel(table_name = nft_metadata)]
+#[diesel(check_for_backend(diesel::pg::Pg))]
+pub struct NftMetadata {
+    pub uid: Vec<u8>,
+    pub json: Value,
+}
+
+/// Evaluates the md5 hash of serde_json::Value
+/// Used for JSON documents like NFTMetadata & ContractABI.
+fn doc_hash(value: &Value) -> Vec<u8> {
+    md5::compute(value.to_string().as_bytes()).0.to_vec()
+}
+impl NftMetadata {
+    pub fn from(content: Value) -> Self {
+        Self {
+            uid: doc_hash(&content),
+            json: content,
+        }
+    }
 }
 
 #[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone, Serialize)]
@@ -71,6 +93,8 @@ pub struct Nft {
     pub token_uri: Option<String>,
     #[diesel(serialize_as = Vec<u8>)]
     pub owner: Address,
+    /// The md5-hash of the raw document (if available)
+    pub metadata_id: Option<Vec<u8>>,
     pub last_update_block: i64,
     pub last_update_tx: i64,
     pub last_update_log_index: i64,
@@ -94,6 +118,7 @@ impl Nft {
             token_id: nft_id.token_id.into(),
             token_uri: None,
             owner: Address::zero(),
+            metadata_id: None,
             last_update_block: 0,
             last_update_tx: 0,
             last_update_log_index: 0,
@@ -132,6 +157,8 @@ pub struct Erc1155 {
     /// Address of first minter.
     #[diesel(serialize_as = Vec<u8>)]
     pub creator_address: Address,
+    /// The md5-hash of the raw document (if available).
+    pub metadata_id: Option<Vec<u8>>,
     /// Block when token was first minted (i.e. transfer from zero).
     pub mint_block: i64,
     /// Transaction index of first mint.
@@ -149,6 +176,7 @@ impl Erc1155 {
             token_id: nft_id.token_id.into(),
             token_uri: None,
             total_supply: BigDecimal::zero(),
+            metadata_id: None,
             last_update_block: 0,
             last_update_tx: 0,
             last_update_log_index: 0,
@@ -213,8 +241,9 @@ pub struct TokenContract {
     created_tx_index: i64,
     /// This is generally non-null for Erc1155s.
     base_uri: Option<String>,
-    // content_flags -> Nullable<Array<Nullable<ContentFlag>>>,
-    // content_category -> Nullable<Array<Nullable<ContentCategory>>>
+    /// The md5-hash of the raw document (if available).
+    pub abi_id: Option<Vec<u8>>, // content_flags -> Nullable<Array<Nullable<ContentFlag>>>,
+                                 // content_category -> Nullable<Array<Nullable<ContentCategory>>>
 }
 
 impl TokenContract {
@@ -231,6 +260,7 @@ impl TokenContract {
             //  (remove) https://github.com/Mintbase/evm-indexer/issues/101
             //  (try-fetch) https://github.com/Mintbase/evm-indexer/issues/26
             base_uri: None,
+            abi_id: None,
         }
     }
 }
@@ -248,8 +278,17 @@ pub struct Transaction {
     to: Option<Vec<u8>>,
 }
 
+impl Eq for Transaction {}
+
+// Implement Hash based solely on the 'number' field
+impl std::hash::Hash for Transaction {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.hash.hash(state);
+    }
+}
+
 impl Transaction {
-    pub fn new(block: u64, index: u64, details: TxDetails) -> Self {
+    pub fn new(block: u64, index: u64, details: &TxDetails) -> Self {
         Self {
             block_number: block as i64,
             index: index as i64,
@@ -279,6 +318,7 @@ impl Block {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use eth::types::{Bytes32, U256};
 
@@ -301,6 +341,7 @@ mod tests {
                 created_block: base.block_number.try_into().unwrap(),
                 created_tx_index: base.transaction_index.try_into().unwrap(),
                 base_uri: None,
+                abi_id: None
             }
         )
     }
@@ -332,6 +373,7 @@ mod tests {
                 token_id: nft_id.token_id.into(),
                 token_uri: None,
                 owner: Address::zero(),
+                metadata_id: None,
                 last_update_block: 0,
                 last_update_tx: 0,
                 last_update_log_index: 0,
@@ -367,5 +409,14 @@ mod tests {
             transaction_index: 0,
             contract_address
         }));
+    }
+
+    #[test]
+    fn document_hash() {
+        let document = serde_json::json!("My JSON document!");
+        assert_eq!(
+            doc_hash(&document),
+            vec![124, 98, 30, 175, 161, 39, 233, 146, 42, 191, 65, 112, 29, 74, 42, 204]
+        )
     }
 }

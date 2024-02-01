@@ -27,9 +27,16 @@ diesel::table! {
 }
 
 diesel::table! {
-    contract_abis (address) {
-        address -> Bytea,
+    contract_abis (uid) {
+        uid -> Bytea,
         abi -> Nullable<Jsonb>,
+    }
+}
+
+diesel::table! {
+    nft_metadata (uid) {
+        uid -> Bytea,
+        json -> Jsonb,
     }
 }
 
@@ -39,6 +46,7 @@ diesel::table! {
         token_id -> Numeric,
         token_uri -> Nullable<Text>,
         owner -> Bytea,
+        metadata_id -> Nullable<Bytea>,
         last_update_block -> Int8,
         last_update_tx -> Int8,
         last_update_log_index -> Int8,
@@ -67,6 +75,7 @@ diesel::table! {
         created_block -> Int8,
         created_tx_index -> Int8,
         base_uri -> Nullable<Text>,
+        abi_id -> Nullable<Bytea>
         // content_flags -> Nullable<Array<Nullable<ContentFlag>>>,
         // content_category -> Nullable<Array<Nullable<ContentCategory>>>,
     }
@@ -96,6 +105,7 @@ diesel::table! {
         token_uri -> Nullable<Text>,
         total_supply -> Numeric,
         creator_address -> Bytea,
+        metadata_id -> Nullable<Bytea>,
         mint_block -> Int8,
         mint_tx -> Int8,
         last_update_block -> Int8,

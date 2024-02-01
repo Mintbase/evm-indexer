@@ -76,6 +76,8 @@ impl Queryable<Numeric, Pg> for U256 {
 
 impl From<BigDecimal> for U256 {
     fn from(val: BigDecimal) -> Self {
+        // It is assumed that anything which successfully happened on-chain
+        // will not result in overflows during off-chain accounting.
         U256(Uint256::from_str(&val.to_string()).expect("Invalid value"))
     }
 }
