@@ -22,6 +22,3 @@ RUN chmod +x /entrypoint.sh
 
 # Set the script as the entrypoint of the container
 ENTRYPOINT ["/entrypoint.sh"]
-
-# Run the migrations
-#CMD ./wait-for-it.sh $DB_HOST_PORT -- diesel migration run
