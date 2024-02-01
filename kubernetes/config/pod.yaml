@@ -17,11 +17,13 @@ spec:
         - name: migration
           image: {{ .ContainerRepo }}/{{ .ProjectName }}-migration:{{ .ImageTag }}
           env:
-          - name: DATABASE_URL
-            valueFrom:
-              secretKeyRef:
-                name: indexer-secrets
-                key: STORE_URL
+            - name: STORE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: indexer-secrets
+                  key: STORE_URL
+            - name: NETWORK
+              value: { { .Network } }
 
       containers:
       - name: {{ .ProjectName }}

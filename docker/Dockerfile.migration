@@ -17,5 +17,11 @@ COPY data-store/migrations/ /app/data-store/migrations/
 COPY test_db/wait-for-it.sh /app
 RUN chmod +x /app/wait-for-it.sh
 
+COPY docker/entrypoint.migration.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Set the script as the entrypoint of the container
+ENTRYPOINT ["/entrypoint.sh"]
+
 # Run the migrations
-CMD ./wait-for-it.sh $DB_HOST_PORT -- diesel migration run
+#CMD ./wait-for-it.sh $DB_HOST_PORT -- diesel migration run
