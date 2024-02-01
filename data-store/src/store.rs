@@ -323,12 +323,17 @@ impl DataStore {
         handle_query_result(result)
     }
 
-    pub fn get_contract_abi(&mut self, uid: &[u8; 16]) -> Option<ContractAbi> {
-        let result = contract_abis::dsl::contract_abis
-            .filter(contract_abis::uid.eq::<Vec<u8>>(uid.into()))
-            .first(&mut self.get_connection())
-            .optional();
-        handle_query_result(result)
+    pub fn get_contract_abi(&mut self, address: Address) -> Option<ContractAbi> {
+        if let Some(contract) = self.load_contract(address) {
+            if let Some(abi_id) = contract.abi_id {
+                let result = contract_abis::dsl::contract_abis
+                    .filter(contract_abis::uid.eq::<Vec<u8>>(abi_id))
+                    .first(&mut self.get_connection())
+                    .optional();
+                return handle_query_result(result);
+            }
+        }
+        None
     }
 
     fn save_transactions(&mut self, txs: Vec<Transaction>, conn: Option<&mut Connexion>) {

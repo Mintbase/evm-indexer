@@ -6,6 +6,7 @@ use eth::types::{Address, BlockData, Bytes32, NftId, TxDetails, U256};
 use event_retriever::db_reader::models::{ApprovalForAll as ApprovalEvent, EventBase};
 use serde::Serialize;
 use serde_json::Value;
+use utoipa::ToSchema as ToSwagger;
 
 #[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, Clone, PartialEq, Eq)]
 #[diesel(table_name = approval_for_all)]
@@ -53,7 +54,7 @@ impl ApprovalForAll {
     }
 }
 
-#[derive(Queryable, Selectable, Insertable, Serialize, Debug, Clone, PartialEq)]
+#[derive(Queryable, Selectable, Insertable, Serialize, Debug, Clone, PartialEq, ToSwagger)]
 #[diesel(table_name = contract_abis)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ContractAbi {
@@ -83,7 +84,9 @@ impl NftMetadata {
     }
 }
 
-#[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone, Serialize)]
+#[derive(
+    Queryable, Selectable, Insertable, AsChangeset, Debug, PartialEq, Clone, Serialize, ToSwagger,
+)]
 #[diesel(table_name = nfts)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct Nft {
@@ -228,7 +231,9 @@ impl Erc1155Owner {
     }
 }
 
-#[derive(Queryable, Selectable, Insertable, AsChangeset, PartialEq, Debug, Clone)]
+#[derive(
+    Queryable, Selectable, Insertable, AsChangeset, PartialEq, Debug, Clone, Serialize, ToSwagger,
+)]
 #[diesel(table_name = token_contracts)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct TokenContract {
