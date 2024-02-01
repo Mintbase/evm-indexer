@@ -22,6 +22,7 @@ services:
       - postgres-db
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres-db:5432/store
+      DB_HOST_PORT: postgres-db:5432
 
 volumes:
   postgres-data:
