@@ -4,7 +4,6 @@ use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
 use diesel::{AsChangeset, Insertable, Queryable, Selectable};
 use eth::types::{Address, BlockData, Bytes32, NftId, TxDetails, U256};
 use event_retriever::db_reader::models::{ApprovalForAll as ApprovalEvent, EventBase};
-use keccak_hash::keccak;
 use serde::Serialize;
 use serde_json::Value;
 use utoipa::ToSchema as ToSwagger;
@@ -59,8 +58,7 @@ impl ApprovalForAll {
 #[diesel(table_name = contract_abis)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ContractAbi {
-    #[diesel(serialize_as = Vec<u8>)]
-    pub address: Address,
+    pub uid: Vec<u8>,
     pub abi: Option<Value>,
 }
 
@@ -68,16 +66,15 @@ pub struct ContractAbi {
 #[diesel(table_name = nft_metadata)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NftMetadata {
-    #[diesel(serialize_as = Vec<u8>)]
-    pub uid: Bytes32,
+    pub uid: Vec<u8>,
     pub json: Value,
 }
 
-/// Evalutes the keccak hash of serde_json::Value
-fn doc_hash(value: &Value) -> Bytes32 {
-    Bytes32::from(keccak(value.to_string().as_bytes()).0)
+/// Evaluates the md5 hash of serde_json::Value
+/// Used for JSON documents like NFTMetadata & ContractABI.
+fn doc_hash(value: &Value) -> Vec<u8> {
+    md5::compute(value.to_string().as_bytes()).0.to_vec()
 }
-
 impl NftMetadata {
     pub fn from(content: Value) -> Self {
         Self {
@@ -99,7 +96,7 @@ pub struct Nft {
     pub token_uri: Option<String>,
     #[diesel(serialize_as = Vec<u8>)]
     pub owner: Address,
-    /// The keccak hash of the raw document.
+    /// The md5-hash of the raw document (if available)
     pub metadata_id: Option<Vec<u8>>,
     pub last_update_block: i64,
     pub last_update_tx: i64,
@@ -163,7 +160,7 @@ pub struct Erc1155 {
     /// Address of first minter.
     #[diesel(serialize_as = Vec<u8>)]
     pub creator_address: Address,
-    /// The keccak hash of the raw document.
+    /// The md5-hash of the raw document (if available).
     pub metadata_id: Option<Vec<u8>>,
     /// Block when token was first minted (i.e. transfer from zero).
     pub mint_block: i64,
@@ -249,8 +246,9 @@ pub struct TokenContract {
     created_tx_index: i64,
     /// This is generally non-null for Erc1155s.
     base_uri: Option<String>,
-    // content_flags -> Nullable<Array<Nullable<ContentFlag>>>,
-    // content_category -> Nullable<Array<Nullable<ContentCategory>>>
+    /// The md5-hash of the raw document (if available).
+    pub abi_id: Option<Vec<u8>>, // content_flags -> Nullable<Array<Nullable<ContentFlag>>>,
+                                 // content_category -> Nullable<Array<Nullable<ContentCategory>>>
 }
 
 impl TokenContract {
@@ -267,6 +265,7 @@ impl TokenContract {
             //  (remove) https://github.com/Mintbase/evm-indexer/issues/101
             //  (try-fetch) https://github.com/Mintbase/evm-indexer/issues/26
             base_uri: None,
+            abi_id: None,
         }
     }
 }
@@ -284,8 +283,17 @@ pub struct Transaction {
     to: Option<Vec<u8>>,
 }
 
+impl Eq for Transaction {}
+
+// Implement Hash based solely on the 'number' field
+impl std::hash::Hash for Transaction {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.hash.hash(state);
+    }
+}
+
 impl Transaction {
-    pub fn new(block: u64, index: u64, details: TxDetails) -> Self {
+    pub fn new(block: u64, index: u64, details: &TxDetails) -> Self {
         Self {
             block_number: block as i64,
             index: index as i64,
@@ -315,7 +323,6 @@ impl Block {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
 
     use super::*;
     use eth::types::{Bytes32, U256};
@@ -339,6 +346,7 @@ mod tests {
                 created_block: base.block_number.try_into().unwrap(),
                 created_tx_index: base.transaction_index.try_into().unwrap(),
                 base_uri: None,
+                abi_id: None
             }
         )
     }
@@ -413,8 +421,7 @@ mod tests {
         let document = serde_json::json!("My JSON document!");
         assert_eq!(
             doc_hash(&document),
-            Bytes32::from_str("0x657fdc1e2d28600a3951bb0b06f4a9672311ca0a4faffae1f2b5904d8b38f12f")
-                .unwrap()
+            vec![124, 98, 30, 175, 161, 39, 233, 146, 42, 191, 65, 112, 29, 74, 42, 204]
         )
     }
 }

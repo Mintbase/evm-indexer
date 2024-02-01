@@ -184,22 +184,31 @@ impl EthNodeReading for Client {
         &self,
         addresses: &[Address],
     ) -> HashMap<Address, ContractDetails> {
-        tracing::debug!("Preparing {} Contract Details Requests", addresses.len());
+        tracing::info!("preparing {} contract details requests", addresses.len());
         let name_futures = addresses.iter().cloned().map(|a| self.get_name(a));
         let symbol_futures = addresses.iter().cloned().map(|a| self.get_symbol(a));
 
         let (names, symbols) = join(join_all(name_futures), join_all(symbol_futures)).await;
-        tracing::debug!("Complete {} Contract Details Requests", addresses.len());
+        tracing::debug!("complete {} contract details requests", addresses.len());
 
         addresses
             .iter()
             .zip(names.into_iter().zip(symbols))
-            .map(|(&address, (name, symbol))| (address, ContractDetails { name, symbol }))
+            .map(|(&address, (name, symbol))| {
+                (
+                    address,
+                    ContractDetails {
+                        address,
+                        name,
+                        symbol,
+                    },
+                )
+            })
             .collect()
     }
 
     async fn get_uris(&self, token_ids: &[NftId]) -> HashMap<NftId, Option<String>> {
-        tracing::info!("Preparing {} tokenUri Requests", token_ids.len());
+        tracing::info!("preparing {} tokenUri requests", token_ids.len());
         let futures = token_ids
             .iter()
             .cloned()
@@ -394,12 +403,14 @@ mod tests {
                 .get_contract_details(&[ens_contract, bored_ape_contract, mla_field_agent])
                 .await,
             hashmap! {
-                ens_contract => ContractDetails{ name: None, symbol: None },
+                ens_contract => ContractDetails{address: ens_contract, name: None, symbol: None },
                 bored_ape_contract => ContractDetails {
+                    address: bored_ape_contract,
                     name: Some("Bored Ape Yacht Club".to_string()),
                     symbol: Some("BAYC".to_string()),
                 },
                 mla_field_agent => ContractDetails {
+                    address: mla_field_agent,
                     name: Some("Meta Labs Field Agents".to_string()),
                     symbol: Some("MLA1".to_string()),
                 }

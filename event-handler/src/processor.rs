@@ -1,12 +1,12 @@
 use crate::{
     config::{ChainDataSource, HandlerConfig},
     handlers::EventHandler,
-    update_cache::UpdateCache,
 };
 use anyhow::{Context, Result};
 use data_store::{
     models::{TokenContract, Transaction},
     store::DataStore,
+    update_cache::UpdateCache,
 };
 use eth::{rpc::ethrpc::Client as EthRpcClient, rpc::EthNodeReading, types::BlockData};
 use event_retriever::db_reader::{
@@ -35,11 +35,14 @@ impl EventProcessor {
         eth_rpc: &str,
         config: HandlerConfig,
     ) -> Result<Self> {
+        let schema = &config.db_schema;
         Ok(Self {
-            source: EventSource::new(source_url).context("init EventSource")?,
-            store: DataStore::new(store_url).context("init DataStore")?,
+            source: EventSource::new(source_url, schema).context("init EventSource")?,
+            store: DataStore::new(store_url, schema).context("init DataStore")?,
             updates: UpdateCache::default(),
-            eth_client: Arc::new(EthRpcClient::new(eth_rpc).context("init EthRpcClient")?),
+            eth_client: Arc::new(
+                EthRpcClient::new(eth_rpc, config.batch_delay).context("init EthRpcClient")?,
+            ),
             config,
         })
     }
@@ -51,26 +54,21 @@ impl EventProcessor {
             //  https://github.com/Mintbase/evm-indexer/issues/104
             let max_block = self.source.get_finalized_block();
 
-            if current_block >= max_block {
+            if current_block > max_block {
                 // Exit when reached or exceeded the max_block
                 break;
             }
 
-            let end_block = current_block + self.config.page_size - 1;
+            let page_end = current_block + self.config.page_size - 1;
             let block_range = BlockRange {
                 start: current_block,
-                end: end_block.min(max_block), // Ensure we don't exceed max_block
+                end: page_end.min(max_block), // Ensure we don't exceed max_block
             };
 
             self.process_events_for_block_range(block_range).await?;
 
             // Update current_block for the next iteration
-            let processed_block = self.store.get_processed_block();
-            if processed_block <= current_block {
-                // Ensure progress, or break the loop
-                break;
-            }
-            current_block = processed_block + 1;
+            current_block = block_range.end;
         }
 
         Ok(())
@@ -88,6 +86,7 @@ impl EventProcessor {
             .contracts
             .insert(address, TokenContract::from_event_base(event));
     }
+
     async fn load_chain_data(&mut self, range: BlockRange) -> Result<HashMap<u64, BlockData>> {
         let block_info = match self.config.chain_data_source {
             ChainDataSource::Database => {
@@ -101,25 +100,14 @@ impl EventProcessor {
                     .await?
             }
         };
-        self.updates
-            .transactions
-            .extend(
-                block_info
-                    .clone()
-                    .into_iter()
-                    .flat_map(|(block, block_data)| {
-                        block_data
-                            .transactions
-                            .into_iter()
-                            .map(move |(idx, data)| Transaction::new(block, idx, data))
-                    }),
-            );
-
-        self.updates.blocks.extend(block_info.clone().into_values());
         Ok(block_info)
     }
 
     async fn get_missing_node_data(&mut self) {
+        if !self.config.fetch_node_data {
+            return;
+        }
+        tracing::debug!("retrieving missing node data");
         // TODO - (after metadata-retrieving) this functionality will be replaced by metadata-retriever.
         //  https://github.com/Mintbase/evm-indexer/issues/105
         let (mut missing_uris, mut contract_details) = self
@@ -131,7 +119,11 @@ impl EventProcessor {
                     .into_iter()
                     // Without additional specification here this will retry to fetch things
                     // We can prevent this by perhaps by filtering also for range.start < mint_block
-                    .filter(|(_, token)| token.token_uri.is_none())
+                    .filter(|(_, token)| {
+                        token.token_uri.is_none()
+                            && token.last_update_block - token.mint_block
+                                < self.config.uri_retry_blocks
+                    })
                     .map(|(id, _)| id)
                     .collect::<Vec<_>>()
                     .as_slice(),
@@ -143,26 +135,35 @@ impl EventProcessor {
                     .as_slice(),
             )
             .await;
-        tracing::info!(
-            "retrieving missing node data for {} contracts and {} tokens",
-            contract_details.len(),
-            missing_uris.len()
-        );
+        let mut uri_count = 0;
         for (id, possible_uri) in missing_uris.drain() {
             if let Some(uri) = possible_uri {
+                uri_count += 1;
                 self.updates.nfts.get_mut(&id).expect("known").token_uri = Some(uri);
             }
         }
 
+        let mut contract_details_count = contract_details.len();
         for (address, details) in contract_details.drain() {
-            let contract = self
-                .updates
-                .contracts
-                .get_mut(&address)
-                .expect("known to exist");
-            contract.name = details.name;
-            contract.symbol = details.symbol;
+            if details.name.is_none() && details.symbol.is_none() {
+                // decrement data count.
+                contract_details_count -= 1;
+            } else {
+                // At least one non-trivial value:
+                let contract = self
+                    .updates
+                    .contracts
+                    .get_mut(&address)
+                    .expect("known to exist");
+                contract.name = details.name;
+                contract.symbol = details.symbol;
+            }
         }
+        tracing::info!(
+            "retrieved missing node data for {} contracts and {} tokens",
+            contract_details_count,
+            uri_count
+        );
     }
 
     async fn process_events_for_block_range(&mut self, range: BlockRange) -> Result<()> {
@@ -170,18 +171,24 @@ impl EventProcessor {
         let event_map = self.source.get_events_for_block_range(range)?;
         let mut block_data = self.load_chain_data(range).await?;
         for (block, block_events) in event_map.into_iter() {
-            let tx_data = block_data
+            let block_data = block_data
                 .remove(&block)
-                .unwrap_or_else(|| panic!("Missing block {} in {:?}", block, range))
-                .transactions;
+                .unwrap_or_else(|| panic!("Missing block {} in {:?}", block, range));
             for ((tx_index, _), tx_events) in block_events {
-                let tx = tx_data.get(&tx_index).expect("receipt known to exist!");
+                let tx = block_data
+                    .transactions
+                    .get(&tx_index)
+                    .expect("receipt known to exist!");
+                self.updates
+                    .add_block_tx(&block_data, &Transaction::new(block, tx_index, tx));
                 for NftEvent { base, meta } in tx_events.into_iter() {
                     self.check_for_contract(&base);
                     match meta {
                         EventMeta::Erc721Approval(a) => self.handle_event(base, a, tx),
                         EventMeta::Erc721Transfer(t) => self.handle_event(base, t, tx),
-                        EventMeta::Erc1155TransferBatch(batch) => {
+                        EventMeta::Erc1155TransferBatch(mut batch) => {
+                            // Squash the event to avoid unintentional replay protection errors.
+                            batch.squash();
                             for (id, value) in batch.ids.into_iter().zip(batch.values.into_iter()) {
                                 self.handle_event(
                                     base,
@@ -203,21 +210,19 @@ impl EventProcessor {
                 }
             }
         }
-        // TODO (Once we have metadata-retrieval)
-        //  this will have to happen AFTER updates.
-        //  The service expects records to exist attempting to update.
-        // Retrieve missing data from node.
-        match self.config.fetch_metadata {
-            true => self.get_missing_node_data().await,
-            // This is a placeholder for metadata retrieving invocation.
-            // Make pubsub post here.
-            false => (),
-        }
 
-        // Drain cache and write to store
-        self.updates.write(&mut self.store).await;
-        tracing::info!("completed event processing for {:?}", range);
+        self.get_missing_node_data().await;
+        self.write_and_clear_updates();
+        // self.updates.write(&mut self.store).await;
+        // TODO: Retrieve off-chain metadata. AFTER updates (since records must exist in DB)
         Ok(())
+    }
+
+    fn write_and_clear_updates(&mut self) {
+        // Drain cache and write to store
+        let updates = std::mem::take(&mut self.updates);
+        self.store.mass_update(updates);
+        assert!(self.updates.is_empty());
     }
 }
 
@@ -238,7 +243,10 @@ mod tests {
             HandlerConfig {
                 chain_data_source: ChainDataSource::Database,
                 page_size: 100,
-                fetch_metadata: false,
+                fetch_node_data: false,
+                db_schema: "public".to_string(),
+                uri_retry_blocks: 100,
+                batch_delay: 1,
             },
         )
         .unwrap()
