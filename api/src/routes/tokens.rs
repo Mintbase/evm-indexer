@@ -37,7 +37,7 @@ pub async fn tokens_by_owner(
     task: web::Json<AddressPayload>,
 ) -> impl Responder {
     // TODO use store as part of appState
-    let mut store = DataStore::new(&data.db_url).expect("connect to store");
+    let mut store = DataStore::new(&data.db_url, &data.db_schema).expect("connect to store");
     let owner_address = match Address::from_str(&task.address) {
         Ok(address) => address,
         Err(err) => return HttpResponse::BadRequest().body(err.to_string()),
@@ -56,7 +56,7 @@ pub async fn tokens_by_owner(
 )]
 #[get("/tokens/owner/{address}")]
 pub async fn tokens(data: web::Data<AppState>, path: web::Path<String>) -> impl Responder {
-    let mut store = DataStore::new(&data.db_url).expect("connect to store");
+    let mut store = DataStore::new(&data.db_url, &data.db_schema).expect("connect to store");
     let owner = match Address::from_str(&path.into_inner()) {
         Ok(address) => address,
         Err(err) => return HttpResponse::BadRequest().body(err.to_string()),
@@ -76,7 +76,7 @@ pub async fn tokens_by_minter(
     data: web::Data<AppState>,
     path: web::Path<String>,
 ) -> impl Responder {
-    let mut store = DataStore::new(&data.db_url).expect("connect to store");
+    let mut store = DataStore::new(&data.db_url, &data.db_schema).expect("connect to store");
     let minter = match Address::from_str(&path.into_inner()) {
         Ok(address) => address,
         Err(err) => return HttpResponse::BadRequest().body(err.to_string()),

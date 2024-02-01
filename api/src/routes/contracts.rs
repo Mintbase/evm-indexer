@@ -19,7 +19,7 @@ use std::str::FromStr;
 #[get("/contract_abi/{address}")]
 pub async fn contract_abi(data: web::Data<AppState>, path: web::Path<String>) -> impl Responder {
     // TODO use store as part of appState
-    let mut store = DataStore::new(&data.db_url).expect("connect to store");
+    let mut store = DataStore::new(&data.db_url, &data.db_schema).expect("connect to store");
     let contract_address = match Address::from_str(&path.into_inner()) {
         Ok(address) => address,
         Err(err) => return HttpResponse::BadRequest().body(err.to_string()),
@@ -38,7 +38,7 @@ pub async fn contract_abi(data: web::Data<AppState>, path: web::Path<String>) ->
 #[get("/contract/{address}")]
 pub async fn contract(data: web::Data<AppState>, path: web::Path<String>) -> impl Responder {
     // TODO use store as part of appState
-    let mut store = DataStore::new(&data.db_url).expect("connect to store");
+    let mut store = DataStore::new(&data.db_url, &data.db_schema).expect("connect to store");
     let contract_address = match Address::from_str(&path.into_inner()) {
         Ok(address) => address,
         Err(err) => return HttpResponse::BadRequest().body(err.to_string()),

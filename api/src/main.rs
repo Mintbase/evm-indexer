@@ -30,6 +30,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(Logger::default())
             .app_data(web::Data::new(AppState::new(
                 std::env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
+                std::env::var("DB_SCHEMA").expect("DB_SCHEMA must be set"),
             )))
             // .service(web::scope("/api").service(tokens::tokens))
             .service(SwaggerUi::new("/swagger-ui/{_:.*}").urls(vec![(
