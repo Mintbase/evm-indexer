@@ -22,6 +22,7 @@ spec:
               secretKeyRef:
                 name: indexer-secrets
                 key: STORE_URL
+
       containers:
       - name: {{ .ProjectName }}
         image: {{ .ContainerRepo }}/{{ .ProjectName }}:{{ .ImageTag }}
