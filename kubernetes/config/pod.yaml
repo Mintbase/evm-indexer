@@ -23,7 +23,12 @@ spec:
                   name: indexer-secrets
                   key: STORE_URL
             - name: NETWORK
-              value: { { .Network } }
+              value: {{ .Network }}
+            - name: DB_HOST_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: indexer-secrets
+                  key: DB_HOST_PORT
 
       containers:
       - name: {{ .ProjectName }}
@@ -38,7 +43,7 @@ spec:
           - name: CHAIN_SOURCE
             value: "database"
           - name: PAGE_SIZE
-            value: "10"
+            value: "25"
           - name: NODE_URL
             valueFrom:
               secretKeyRef:
