@@ -41,7 +41,7 @@ impl EventProcessor {
             store: DataStore::new(store_url, schema).context("init DataStore")?,
             updates: UpdateCache::default(),
             eth_client: Arc::new(
-                EthRpcClient::new(eth_rpc, config.batch_delay).context("init EthRpcClient")?,
+                EthRpcClient::new(eth_rpc, config.batch_delay, /* usize */).context("init EthRpcClient")?,
             ),
             config,
         })

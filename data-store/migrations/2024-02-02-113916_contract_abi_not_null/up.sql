@@ -1,0 +1,1 @@
+ALTER TABLE contract_abis ALTER COLUMN abi SET NOT NULL;
