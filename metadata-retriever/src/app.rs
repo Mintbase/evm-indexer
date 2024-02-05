@@ -36,7 +36,8 @@ impl AppData {
         };
         Self {
             store: Arc::new(Mutex::new(
-                DataStore::new(&config.store_url, &config.db_schema).expect("Data Store required"),
+                DataStore::new(&config.store_url, &config.store_schema)
+                    .expect("Data Store required"),
             )),
             abi_fetcher: Arc::new(EtherscanApi::new(&config.etherscan_key)),
             metadata_fetcher,
