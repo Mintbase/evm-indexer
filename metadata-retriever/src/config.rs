@@ -11,7 +11,7 @@ impl Config {
     pub fn from_env() -> Result<Self> {
         Ok(Self {
             store_url: std::env::var("STORE_URL").context("missing STORE_URL")?,
-            store_schema: std::env::var("STORE_SCHEMA").context("missing STORE_SCHEMA")?,
+            store_schema: std::env::var("DB_SCHEMA").context("missing DB_SCHEMA")?,
             etherscan_key: std::env::var("ETHERSCAN_KEY").context("missing ETHERSCAN_KEY")?,
             alchemy_key: std::env::var("ALCHEMY_KEY").ok(),
         })

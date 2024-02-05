@@ -12,6 +12,7 @@ data-store = { path = "../data-store" }
 actix-web = "4.4.0"
 tracing-actix-web = "0.7.9"
 anyhow = "1.0.75"
+dotenv = "0.15.0"
 google-cloud-pubsub = "0.22.0"
 serde = { version = "1.0.193", features = ["derive"] }
 serde_json = "1.0.108"
@@ -24,6 +25,5 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 tokio = "1.35.1"
 
 [dev-dependencies]
-dotenv = "0.15.0"
 tokio = { version = "1.33.0", features = ["macros"] }
 tracing-test = "0.2.4"
