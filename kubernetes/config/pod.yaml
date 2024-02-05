@@ -31,7 +31,7 @@ spec:
                   key: DB_HOST_PORT
 
       containers:
-      - name: {{ .ProjectName }}
+      - name: {{ .ProjectName }}-event-processor
         image: {{ .ContainerRepo }}/{{ .ProjectName }}:{{ .ImageTag }}
         imagePullPolicy: Always
         args: ["event-handler"]
@@ -61,3 +61,23 @@ spec:
               secretKeyRef:
                 name: indexer-secrets
                 key: STORE_URL
+
+      - name: { { .ProjectName } }-pubsub
+        image: { { .ContainerRepo } }/{{ .ProjectName }}:{{ .ImageTag }}
+        imagePullPolicy: Always
+        args: [ "metadata-retriever" ]
+        env:
+          - name: DB_SCHEMA
+            value: { { .Network } }
+
+          - name: SOURCE_URL
+            valueFrom:
+              secretKeyRef:
+                name: indexer-secrets
+                key: SOURCE_URL
+
+          - name: ETHERSCAN_KEY
+            valueFrom:
+              secretKeyRef:
+                name: indexer-secrets
+                key: ETHERSCAN_KEY
