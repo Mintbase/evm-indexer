@@ -4,8 +4,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum Message {
-    Contract { address: Address },
-    Token { address: Address, token_id: U256, token_uri: Option<String> },
+    Contract {
+        address: Address,
+    },
+    Token {
+        address: Address,
+        token_id: U256,
+        token_uri: Option<String>,
+    },
 }
 
 #[cfg(test)]
@@ -20,7 +26,7 @@ mod tests {
         let token_struct = Message::Token {
             address: Address::from(2),
             token_id: U256::from_dec_str("12345678999999").unwrap(),
-            token_uri: Some("SupaString".into())
+            token_uri: Some("SupaString".into()),
         };
 
         // Serialize the struct to JSON
@@ -55,7 +61,7 @@ mod tests {
         let token_struct = Message::Token {
             address: Address::from(2),
             token_id: U256::from_dec_str("12345678999999").unwrap(),
-            token_uri: None
+            token_uri: None,
         };
         let vec_request = vec![contract_struct, token_struct];
         let request_json =
