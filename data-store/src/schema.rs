@@ -29,7 +29,7 @@ diesel::table! {
 diesel::table! {
     contract_abis (uid) {
         uid -> Bytea,
-        abi -> Nullable<Jsonb>,
+        abi -> Jsonb,
     }
 }
 

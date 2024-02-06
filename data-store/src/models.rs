@@ -53,12 +53,38 @@ impl ApprovalForAll {
     }
 }
 
+struct JsonDoc {
+    hash: Vec<u8>,
+    value: Value,
+}
+
+impl JsonDoc {
+    fn new(value: Value) -> Self {
+        let content_string = value.to_string().replace('\0', "");
+        let stripped_content = serde_json::Value::from(content_string);
+        Self {
+            hash: doc_hash(&stripped_content),
+            value: stripped_content,
+        }
+    }
+}
+
 #[derive(Queryable, Selectable, Insertable, Serialize, Debug, Clone, PartialEq)]
 #[diesel(table_name = contract_abis)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct ContractAbi {
     pub uid: Vec<u8>,
-    pub abi: Option<Value>,
+    pub abi: Value,
+}
+
+impl ContractAbi {
+    pub fn from(content: Value) -> Self {
+        let json = JsonDoc::new(content);
+        Self {
+            uid: json.hash,
+            abi: json.value,
+        }
+    }
 }
 
 #[derive(Queryable, Selectable, Insertable, Serialize, Debug, Clone, PartialEq)]
@@ -76,9 +102,10 @@ fn doc_hash(value: &Value) -> Vec<u8> {
 }
 impl NftMetadata {
     pub fn from(content: Value) -> Self {
+        let json = JsonDoc::new(content);
         Self {
-            uid: doc_hash(&content),
-            json: content,
+            uid: json.hash,
+            json: json.value,
         }
     }
 }
