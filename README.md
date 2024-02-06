@@ -1,3 +1,7 @@
+[![Rust](https://github.com/Mintbase/evm-indexer/actions/workflows/rust.yaml/badge.svg)](https://github.com/Mintbase/evm-indexer/actions/workflows/rust.yaml)
+[![Deploy GitHub](https://github.com/Mintbase/evm-indexer/actions/workflows/deploy.yaml/badge.svg)](https://github.com/Mintbase/evm-indexer/actions/workflows/deploy.yaml)
+[![Deploy GitHub](https://github.com/Mintbase/evm-indexer/actions/workflows/deploy-google.yaml/badge.svg)](https://github.com/Mintbase/evm-indexer/actions/workflows/deploy-google.yaml)
+
 # Installation & Local Development
 
 ## Running Tests
