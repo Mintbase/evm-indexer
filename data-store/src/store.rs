@@ -802,7 +802,7 @@ mod tests {
         store.save_contract(TokenContract::from_event_base(&base), None);
         let contract_abi = ContractAbi {
             uid: uid.clone(),
-            abi: Some(serde_json::json!("Ultimate ABI")),
+            abi: serde_json::json!("Ultimate ABI"),
         };
         store.insert_contract_abis(&[(address, contract_abi.clone())]);
 
