@@ -31,9 +31,9 @@ jobs:
         uses: docker/metadata-action@v4
         id: migration
         with:
-          images: gcr.io/${{ secrets.GCP_PROJECT_ID }}/evm-indexer-migration
+          images: gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ github.repository }}-migration
 
-      - name: Build and Push Binary to GCH
+      - name: Build & Push Migration to GCH
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -46,9 +46,9 @@ jobs:
         uses: docker/metadata-action@v4
         id: binary
         with:
-          images: gcr.io/${{ secrets.GCP_PROJECT_ID }}/evm-indexer
+          images: gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ github.repository }}
 
-      - name: Build and Push Binary to GCH
+      - name: Build & Push Binary to GCH
         uses: docker/build-push-action@v4
         with:
           context: .
