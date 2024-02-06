@@ -10,4 +10,4 @@ apply:
 hard-restart: delete apply
 
 restart:
-	kubectl rollout restart deployment evm-indexer-processor
+	kubectl rollout restart deployment evm-indexer-$(NETWORK)
