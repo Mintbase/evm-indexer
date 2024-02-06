@@ -8,6 +8,9 @@ on:
 jobs:
   deploy-google:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Checkout Repository
@@ -24,14 +27,32 @@ jobs:
       - name: Set up docker auth
         run: gcloud auth configure-docker
 
-      - name: Build and Push Binary & Migration Images
-        run: |
-          BINARY_IMAGE=gcr.io/eth-cloud-mb/evm-indexer:latest
-          MIGRATION_IMAGE=gcr.io/eth-cloud-mb/evm-indexer-migration:latest
-          DOCKERFILE_PATH=docker/Dockerfile
+      - name: Migration Metadata
+        uses: docker/metadata-action@v4
+        id: migration
+        with:
+          images: gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ github.repository }}-migration
 
-          docker build -t $BINARY_IMAGE -f $DOCKERFILE_PATH.binary .
-          docker push $BINARY_IMAGE
-          
-          docker build -t $MIGRATION_IMAGE -f $DOCKERFILE_PATH.migration .
-          docker push $MIGRATION_IMAGE
+      - name: Build & Push Migration to GCH
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: docker/Dockerfile.migration
+          push: true
+          tags: ${{ steps.migration.outputs.tags }}
+          labels: ${{ steps.migration.outputs.labels }}
+
+      - name: Binary Metadata
+        uses: docker/metadata-action@v4
+        id: binary
+        with:
+          images: gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ github.repository }}
+
+      - name: Build & Push Binary to GCH
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: docker/Dockerfile.binary
+          push: true
+          tags: ${{ steps.binary.outputs.tags }}
+          labels: ${{ steps.binary.outputs.labels }}
