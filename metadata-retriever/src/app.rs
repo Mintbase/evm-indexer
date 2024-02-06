@@ -3,7 +3,7 @@ use crate::{
     config::Config,
     routes::{
         contract::abi::{AbiFetching, EtherscanApi},
-        token::metadata::{alchemy::AlchemyApi, MetadataFetching},
+        token::metadata::MetadataFetching,
     },
 };
 use anyhow::Result;
@@ -24,16 +24,8 @@ pub struct AppData {
 
 impl AppData {
     pub async fn new(subscriber: Subscription, config: Config) -> Self {
-        let metadata_fetcher: Arc<dyn MetadataFetching> = match config.alchemy_key {
-            Some(key) => {
-                tracing::debug!("Using AlchemyAPI for metadata retrieval");
-                Arc::new(AlchemyApi::new(key))
-            }
-            None => {
-                tracing::debug!("Using Homebrew for metadata retrieval");
-                Arc::new(Homebrew {})
-            }
-        };
+        // TODO - support for Alchemy Fetching: https://github.com/Mintbase/evm-indexer/issues/138
+        let metadata_fetcher: Arc<dyn MetadataFetching> = Arc::new(Homebrew {});
         Self {
             store: Arc::new(Mutex::new(
                 DataStore::new(&config.store_url, &config.store_schema)

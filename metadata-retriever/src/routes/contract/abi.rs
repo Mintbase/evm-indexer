@@ -65,11 +65,6 @@ impl EtherscanApi {
 }
 #[async_trait::async_trait]
 impl AbiFetching for EtherscanApi {
-    // async fn get_contract_abi(&self, address: Address) -> Result<Option<Value>> {
-    //     let request = format!("module=contract&action=getabi&address={address}");
-    //     self.call_etherscan_api(&request).await
-    // }
-
     async fn get_contract_abi(&self, address: Address) -> Result<Option<Value>> {
         const MAX_RETRIES: usize = 5;
         const INITIAL_BACKOFF: u64 = 1000; // Initial backoff in milliseconds
