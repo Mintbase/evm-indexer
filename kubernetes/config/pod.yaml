@@ -67,8 +67,13 @@ spec:
         imagePullPolicy: Always
         args: [ "metadata-retriever" ]
         env:
+          - name: TOPIC_NAME
+            value: projects/eth-cloud-mb/topics/{{ .Network }}
+          - name: SUBSCRIPTION_NAME
+            value: projects/eth-cloud-mb/subscriptions/metadata-retriever
+
           - name: DB_SCHEMA
-            value: { { .Network } }
+            value: {{ .Network }}
 
           - name: SOURCE_URL
             valueFrom:

@@ -44,7 +44,8 @@ pub async fn build_subscription(config: ClientConfig) -> Result<Subscription> {
     let client = Client::new(config).await?;
 
     // Get the topic to subscribe to.
-    let topic = client.topic("test-topic");
+    let topic_name = std::env::var("TOPIC_NAME").expect("TOPIC_NAME must be set");
+    let topic = client.topic(&topic_name);
 
     // Create subscription
     // If subscription name does not contain a "/", then the project is taken from client above. Otherwise, the
@@ -56,7 +57,9 @@ pub async fn build_subscription(config: ClientConfig) -> Result<Subscription> {
     };
 
     // Create subscription
-    let subscription = client.subscription("test-subscription");
+    let subscription_name =
+        std::env::var("SUBSCRIPTION_NAME").expect("SUBSCRIPTION_NAME must be set");
+    let subscription = client.subscription(&subscription_name);
     if !subscription.exists(None).await? {
         subscription
             .create(topic.fully_qualified_name(), config, None)
