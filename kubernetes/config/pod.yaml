@@ -15,7 +15,7 @@ spec:
     spec:
       initContainers:
         - name: migration
-          image: {{ .ContainerRepo }}/{{ .ProjectName }}-migration:{{ .ImageTag }}
+          image: {{ .ContainerRepo }}/mintbase/{{ .ProjectName }}-migration:{{ .ImageTag }}
           env:
             - name: STORE_URL
               valueFrom:
@@ -31,8 +31,8 @@ spec:
                   key: DB_HOST_PORT
 
       containers:
-      - name: {{ .ProjectName }}-event-processor
-        image: {{ .ContainerRepo }}/{{ .ProjectName }}:{{ .ImageTag }}
+      - name: {{ .ProjectName }}
+        image: {{ .ContainerRepo }}/mintbase/{{ .ProjectName }}:{{ .ImageTag }}
         imagePullPolicy: Always
         args: ["event-handler"]
         env:
@@ -62,8 +62,8 @@ spec:
                 name: indexer-secrets
                 key: STORE_URL
 
-      - name: { { .ProjectName } }-pubsub
-        image: { { .ContainerRepo } }/{{ .ProjectName }}:{{ .ImageTag }}
+      - name: {{ .ProjectName }}-pubsub
+        image: {{ .ContainerRepo }}/mintbase/{{ .ProjectName }}:{{ .ImageTag }}
         imagePullPolicy: Always
         args: [ "metadata-retriever" ]
         env:
