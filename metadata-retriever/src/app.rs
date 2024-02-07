@@ -6,7 +6,7 @@ use crate::{
         token::metadata::MetadataFetching,
     },
 };
-use anyhow::Result;
+use anyhow::{Context, Result};
 use data_store::store::DataStore;
 use google_cloud_pubsub::{
     client::{Client, ClientConfig},
@@ -41,7 +41,7 @@ impl AppData {
 // TODO - this is a test subscription!
 pub async fn build_subscription(config: ClientConfig) -> Result<Subscription> {
     // Create pubsub client.
-    let client = Client::new(config).await?;
+    let client = Client::new(config).await.context("client construction")?;
 
     // Get the topic to subscribe to.
     let topic_name = std::env::var("TOPIC_NAME").expect("TOPIC_NAME must be set");

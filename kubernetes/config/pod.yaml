@@ -62,32 +62,38 @@ spec:
                 name: indexer-secrets
                 key: STORE_URL
 
-      - name: {{ .ProjectName }}-pubsub
-        image: {{ .ContainerRepo }}/mintbase/{{ .ProjectName }}:v0.0.3-metadata-test1
-        imagePullPolicy: Always
-        args: [ "metadata-retriever" ]
-        ports:
-          - containerPort: 8681
-        env:
-          - name: TOPIC_NAME
-            value: projects/eth-cloud-mb/topics/{{ .Network }}
-          - name: SUBSCRIPTION_NAME
-            value: projects/eth-cloud-mb/subscriptions/metadata-retriever
-
-          - name: DB_SCHEMA
-            value: {{ .Network }}
-
-          - name: SOURCE_URL
-            valueFrom:
-              secretKeyRef:
-                name: indexer-secrets
-                key: SOURCE_URL
-
-          - name: ETHERSCAN_KEY
-            valueFrom:
-              secretKeyRef:
-                name: indexer-secrets
-                key: ETHERSCAN_KEY
+#      - name: {{ .ProjectName }}-pubsub
+#        image: {{ .ContainerRepo }}/mintbase/{{ .ProjectName }}:v0.0.3-metadata-test3
+#        imagePullPolicy: Always
+#        args: [ "metadata-retriever" ]
+#        ports:
+#          - containerPort: 8681
+#        env:
+#          - name: TOPIC_NAME
+#            value: projects/eth-cloud-mb/topics/{{ .Network }}
+#          - name: SUBSCRIPTION_NAME
+#            value: projects/eth-cloud-mb/subscriptions/metadata-retriever
+#
+#          - name: DB_SCHEMA
+#            value: {{ .Network }}
+#
+#          - name: SOURCE_URL
+#            valueFrom:
+#              secretKeyRef:
+#                name: indexer-secrets
+#                key: SOURCE_URL
+#
+#          - name: ETHERSCAN_KEY
+#            valueFrom:
+#              secretKeyRef:
+#                name: indexer-secrets
+#                key: ETHERSCAN_KEY
+#
+#          - name: GOOGLE_APPLICATION_CREDENTIALS_JSON
+#            valueFrom:
+#              secretKeyRef:
+#                name: indexer-secrets
+#                key: GOOGLE_APPLICATION_CREDENTIALS_JSON
 ---
 apiVersion: v1
 kind: Service
