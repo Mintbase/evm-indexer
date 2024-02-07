@@ -1,7 +1,6 @@
 name: Deploy GitHub
 on:
   push:
-    branches: [main]
     tags: [v*]
 
 jobs:
