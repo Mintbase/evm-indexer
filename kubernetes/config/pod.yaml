@@ -15,7 +15,7 @@ spec:
     spec:
       initContainers:
         - name: migration
-          image: {{ .ContainerRepo }}/{{ .ProjectName }}-migration:{{ .ImageTag }}
+          image: {{ .ContainerRepo }}/mintbase/{{ .ProjectName }}-migration:{{ .ImageTag }}
           env:
             - name: STORE_URL
               valueFrom:
@@ -32,7 +32,7 @@ spec:
 
       containers:
       - name: {{ .ProjectName }}
-        image: {{ .ContainerRepo }}/{{ .ProjectName }}:{{ .ImageTag }}
+        image: {{ .ContainerRepo }}/mintbase/{{ .ProjectName }}:{{ .ImageTag }}
         imagePullPolicy: Always
         args: ["event-handler"]
         env:
