@@ -15,9 +15,18 @@ ETHERSCAN_KEY=
 ```
 
 2. Run the Service
-```sh
-ETHERSCAN_KEY=$ETHERSCAN_KEY cargo run
-```
+
+    Make sure to have the following env vars set:
+    ```sh
+    PUBSUB_EMULATOR_HOST=localhost:8681
+    TOPIC_NAME=test-topic
+    SUBSCRIPTION_NAME=test-subscription
+    ETHERSCAN_KEY=$ETHERSCAN_KEY
+    ```
+        
+    ```sh
+    cargo run --bin metadata-retriever
+    ```
 
 You can POST JSON documents of type [Message](../eth/src/types/message.rs) to this service as follows:
 

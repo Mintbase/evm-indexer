@@ -63,9 +63,11 @@ spec:
                 key: STORE_URL
 
       - name: {{ .ProjectName }}-pubsub
-        image: {{ .ContainerRepo }}/mintbase/{{ .ProjectName }}:{{ .ImageTag }}
+        image: {{ .ContainerRepo }}/mintbase/{{ .ProjectName }}:v0.0.3-metadata-test1
         imagePullPolicy: Always
         args: [ "metadata-retriever" ]
+        ports:
+          - containerPort: 8681
         env:
           - name: TOPIC_NAME
             value: projects/eth-cloud-mb/topics/{{ .Network }}
@@ -86,3 +88,16 @@ spec:
               secretKeyRef:
                 name: indexer-secrets
                 key: ETHERSCAN_KEY
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .ProjectName }}-load-balancer
+spec:
+  selector:
+    app: {{ .ProjectName }}
+  ports:
+    - protocol: TCP
+      port: 80  # External port
+      targetPort: 8681  # Container port
+  type: LoadBalancer

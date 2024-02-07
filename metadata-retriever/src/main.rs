@@ -67,9 +67,6 @@ async fn pubsub_callback(data: web::Bytes, state: Data<AppData>) -> impl Respond
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
-    // For local testing.
-    std::env::set_var("PUBSUB_EMULATOR_HOST", "localhost:8681");
-
     // Default logs set to info (use RUST_LOGS to override).
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
         .with_env_filter(env::var("RUST_LOGS").unwrap_or("info".to_string()))
