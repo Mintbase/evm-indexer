@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait;
 use eth::types::Address;
 use reqwest::Client;
@@ -44,12 +44,14 @@ impl EtherscanApi {
             .await?
             .json::<ApiResponse<Value>>()
             .await?;
-
         tracing::debug!("Status {}, message: {:?}", status, message);
 
-        if status == "1" {
+        if status == "1" && result.is_some() {
             // The request was successful, return the result
-            Ok(result)
+            Ok(
+                serde_json::from_str(result.unwrap().as_str().expect("should be string array"))
+                    .context("expected string-ified JSON")?,
+            )
         } else {
             match message {
                 Some(message) => {

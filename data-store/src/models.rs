@@ -61,7 +61,8 @@ struct JsonDoc {
 impl JsonDoc {
     fn new(value: Value) -> Self {
         let content_string = value.to_string().replace('\0', "");
-        let stripped_content = serde_json::Value::from(content_string);
+        let stripped_content: Value =
+            serde_json::from_str::<Value>(&content_string).expect("was Value before");
         Self {
             hash: doc_hash(&stripped_content),
             value: stripped_content,
