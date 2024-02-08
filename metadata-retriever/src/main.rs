@@ -9,7 +9,7 @@ use actix_web::{
 use app::AppData;
 use config::Config;
 use eth::types::{Address, Message, NftId};
-use google_cloud_pubsub::client::ClientConfig;
+// use google_cloud_pubsub::client::ClientConfig;
 use std::env;
 
 use crate::routes::RequestHandler;
@@ -31,6 +31,10 @@ fn partition_requests(payload: Vec<Message>) -> (Vec<Address>, Vec<(NftId, Optio
 }
 
 async fn pubsub_callback(data: web::Bytes, state: Data<AppData>) -> impl Responder {
+    println!(
+        "Byte String: {:?}",
+        serde_json::from_slice::<serde_json::Value>(&data)
+    );
     if let Ok(batch) = serde_json::from_slice::<Vec<Message>>(&data) {
         let (contracts, tokens) = partition_requests(batch);
         tracing::info!(
@@ -69,18 +73,22 @@ async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
     // Default logs set to info (use RUST_LOGS to override).
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
-        .with_env_filter(env::var("RUST_LOGS").unwrap_or("info".to_string()))
+        .with_env_filter(env::var("RUST_LOGS").unwrap_or("debug".to_string()))
         .with_ansi(false)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
-    let client_config = ClientConfig::default().with_auth().await.unwrap();
+    // let client_config = ClientConfig::default().with_auth().await.unwrap();
 
-    let subscription = app::build_subscription(client_config)
-        .await
-        .expect("Couldn't build subscriber");
+    // let subscription = app::build_subscription(client_config)
+    //     .await
+    //     .expect("Couldn't build subscriber");
     let config = Config::from_env().expect("Config error!");
-    let state = AppData::new(subscription.clone(), config).await;
+    let state = AppData::new(
+        // subscription.clone(),
+        config,
+    )
+    .await;
     HttpServer::new(move || {
         App::new()
             .app_data(Data::new(state.clone()))
