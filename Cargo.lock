@@ -1633,7 +1633,6 @@ name = "event-handler"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "base64 0.21.5",
  "clap",
  "data-store",
  "dotenv",
@@ -1642,7 +1641,6 @@ dependencies = [
  "futures",
  "google-cloud-googleapis",
  "google-cloud-pubsub",
- "reqwest",
  "serde",
  "serde_json",
  "tokio",
