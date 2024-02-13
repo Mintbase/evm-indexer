@@ -56,6 +56,7 @@ pub mod test_util {
     use crate::processor::EventProcessor;
     use eth::types::{Address, Bytes32, NftId, TxDetails, U256};
     use event_retriever::db_reader::models::EventBase;
+    use std::collections::HashSet;
     use std::str::FromStr;
 
     static TEST_SOURCE_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";
@@ -74,6 +75,7 @@ pub mod test_util {
                 db_schema: "public".to_string(),
                 uri_retry_blocks: 10,
                 batch_delay: 1,
+                token_avoid_list: HashSet::new(),
             },
         )
         .unwrap()
