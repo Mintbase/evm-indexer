@@ -11,7 +11,7 @@ pub enum ChainDataSource {
     Node,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct HandlerConfig {
     /// Source of chain data (blocks & transactions)
     pub chain_data_source: ChainDataSource,
