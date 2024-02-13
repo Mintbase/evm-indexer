@@ -260,7 +260,7 @@ mod tests {
                 uri_retry_blocks: 100,
                 batch_delay: 1,
             },
-            None,
+            Some(PubSubClient::local_emulator().await),
         )
         .unwrap()
     }

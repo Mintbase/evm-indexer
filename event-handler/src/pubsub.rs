@@ -17,13 +17,19 @@ impl PubSubClient {
             publisher: client.topic(topic_id).new_publisher(None),
         }
     }
+    pub async fn local_emulator() -> PubSubClient {
+        std::env::set_var("PUBSUB_EMULATOR_HOST", "localhost:8681");
+        let config = ClientConfig::default();
+        let client = Client::new(config).await.unwrap();
+        PubSubClient::new(client, "test-topic")
+    }
     pub async fn from_env() -> Result<Self> {
         // Client constructor requires one of
         //  - GOOGLE_APPLICATION_CREDENTIALS or
         //  - GOOGLE_APPLICATION_CREDENTIALS_JSON
         let config = ClientConfig::default().with_auth().await?;
         let client = Client::new(config).await?;
-        let topic_id = std::env::var("PUBSUB_TOPIC_ID").expect("PUBSUB_TOPIC must be set");
+        let topic_id = std::env::var("PUBSUB_TOPIC_ID").expect("PUBSUB_TOPIC_ID must be set");
         Ok(Self::new(client, &topic_id))
     }
 
@@ -37,12 +43,13 @@ impl PubSubClient {
     }
 
     pub async fn post_batch(&self, messages: Vec<Message>) -> Result<()> {
-        let message_vec = messages.iter().map(Self::message_from).collect();
+        let message_vec: Vec<_> = messages.iter().map(Self::message_from).collect();
+        tracing::info!("posting {} messages to metadata fetcher", message_vec.len());
         let awaiter_vec = self.publisher.publish_bulk(message_vec).await;
 
         let results = futures::future::join_all(awaiter_vec.into_iter().map(|a| a.get())).await;
         // Haven't decided yet if we are going to batch log the errors or just log as we go.
-        let _errors: Vec<_> = messages
+        let errors: Vec<_> = messages
             .into_iter()
             .zip(results.into_iter())
             .filter_map(|(message, result)| {
@@ -58,6 +65,7 @@ impl PubSubClient {
                 }
             })
             .collect();
+        tracing::info!("posted messages with {} errors", errors.len());
         Ok(())
     }
 
