@@ -1,7 +1,6 @@
 use anyhow::Result;
 use eth::types::Message;
 use google_cloud_googleapis::pubsub::v1::PubsubMessage;
-use google_cloud_pubsub::publisher::Awaiter;
 use google_cloud_pubsub::{
     client::{Client, ClientConfig},
     publisher::Publisher,
@@ -28,13 +27,38 @@ impl PubSubClient {
         Ok(Self::new(client, &topic_id))
     }
 
-    pub async fn post_message(&self, message: Message) -> Result<Awaiter> {
-        Ok(self.publisher.publish(Self::message_from(&message)).await)
+    pub async fn post_message(&self, message: Message) -> Result<()> {
+        let awaiter = self.publisher.publish(Self::message_from(&message)).await;
+        match awaiter.get().await {
+            Ok(_success) => (),
+            Err(failure) => tracing::error!("failed publish for {:?} with {}", message, failure),
+        }
+        Ok(())
     }
 
-    pub async fn post_batch(&self, messages: Vec<Message>) -> Result<Vec<Awaiter>> {
+    pub async fn post_batch(&self, messages: Vec<Message>) -> Result<()> {
         let message_vec = messages.iter().map(Self::message_from).collect();
-        Ok(self.publisher.publish_bulk(message_vec).await)
+        let awaiter_vec = self.publisher.publish_bulk(message_vec).await;
+
+        let results = futures::future::join_all(awaiter_vec.into_iter().map(|a| a.get())).await;
+        // Haven't decided yet if we are going to batch log the errors or just log as we go.
+        let _errors: Vec<_> = messages
+            .into_iter()
+            .zip(results.into_iter())
+            .filter_map(|(message, result)| {
+                match result {
+                    Ok(_) => {
+                        None
+                        // Handle success, if necessary (e.g., logging, metrics)
+                    }
+                    Err(err) => {
+                        tracing::error!("failed publish for {:?} with {}", message, err);
+                        Some((message, err))
+                    }
+                }
+            })
+            .collect();
+        Ok(())
     }
 
     pub(crate) fn message_from<T: serde::Serialize>(val: &T) -> PubsubMessage {
@@ -70,9 +94,7 @@ mod tests {
             address: Address::from_str("0x966731DFD9B9925DD105FF465687F5AA8F54EE9F").unwrap(),
         };
 
-        let awaiter = ps_client.post_message(contract_payload).await.unwrap();
-        let result = awaiter.get().await;
-        println!("Result {result:?}");
+        let result = ps_client.post_message(contract_payload).await;
         assert!(result.is_ok())
     }
 
@@ -85,8 +107,7 @@ mod tests {
             address: Address::from_str("0x966731DFD9B9925DD105FF465687F5AA8F54EE9F").unwrap(),
         };
 
-        let awaiter = ps_client.post_message(contract_payload).await.unwrap();
-        let result = awaiter.get().await;
+        let result = ps_client.post_message(contract_payload).await;
         assert!(result.is_ok())
     }
 }
