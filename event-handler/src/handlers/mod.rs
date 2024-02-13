@@ -75,6 +75,7 @@ pub mod test_util {
                 uri_retry_blocks: 10,
                 batch_delay: 1,
             },
+            None,
         )
         .unwrap()
     }

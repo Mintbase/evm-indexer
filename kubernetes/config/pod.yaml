@@ -43,7 +43,7 @@ spec:
           - name: CHAIN_SOURCE
             value: "database"
           - name: PAGE_SIZE
-            value: "25"
+            value: "2"
           - name: NODE_URL
             valueFrom:
               secretKeyRef:

@@ -1,3 +1,4 @@
+use crate::pubsub::PubSubClient;
 use crate::{
     config::{ChainDataSource, HandlerConfig},
     handlers::EventHandler,
@@ -26,6 +27,8 @@ pub struct EventProcessor {
     eth_client: Arc<dyn EthNodeReading>,
     /// Runtime configuration parameters
     config: HandlerConfig,
+    /// PubSub Service responsible for fetching off-chain metadata.
+    metadata_client: Option<PubSubClient>,
 }
 
 impl EventProcessor {
@@ -34,6 +37,7 @@ impl EventProcessor {
         store_url: &str,
         eth_rpc: &str,
         config: HandlerConfig,
+        metadata_client: Option<PubSubClient>,
     ) -> Result<Self> {
         let schema = &config.db_schema;
         Ok(Self {
@@ -45,6 +49,7 @@ impl EventProcessor {
                     .context("init EthRpcClient")?,
             ),
             config,
+            metadata_client,
         })
     }
 
@@ -213,9 +218,15 @@ impl EventProcessor {
         }
 
         self.get_missing_node_data().await;
+        // Collect messages for pubsub requests.
+        let data_posts = self.updates.build_messages();
         self.write_and_clear_updates();
-        // self.updates.write(&mut self.store).await;
-        // TODO: Retrieve off-chain metadata. AFTER updates (since records must exist in DB)
+        // Only after we have written updates to DB do we make the posts.
+        // This is so that records are known to exist when pubsub trys to update them.
+        if let Some(pubsub_client) = &self.metadata_client {
+            let _ = pubsub_client.post_batch(data_posts).await;
+        }
+
         Ok(())
     }
 
@@ -236,7 +247,7 @@ mod tests {
     static TEST_STORE_URL: &str = "postgresql://postgres:postgres@localhost:5432/store";
     static TEST_ETH_RPC: &str = "https://rpc.ankr.com/eth";
 
-    fn test_processor() -> EventProcessor {
+    async fn test_processor() -> EventProcessor {
         EventProcessor::new(
             TEST_SOURCE_URL,
             TEST_STORE_URL,
@@ -249,6 +260,7 @@ mod tests {
                 uri_retry_blocks: 100,
                 batch_delay: 1,
             },
+            None,
         )
         .unwrap()
     }
@@ -256,7 +268,7 @@ mod tests {
     #[tokio::test]
     #[traced_test]
     async fn event_processing() {
-        let mut handler = test_processor();
+        let mut handler = test_processor().await;
         let block = std::cmp::max(handler.store.get_processed_block() + 1, 15_000_000);
         let range = BlockRange {
             start: block,
@@ -273,7 +285,7 @@ mod tests {
     #[ignore = "end-to-end test"]
     #[traced_test]
     async fn test_run() {
-        let mut handler = test_processor();
+        let mut handler = test_processor().await;
         let start_from = std::cmp::max(handler.store.get_processed_block() + 1, 15_000_000);
         let result = handler.run(start_from).await;
         assert!(result.is_ok());
