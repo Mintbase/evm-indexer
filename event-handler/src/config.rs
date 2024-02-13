@@ -1,5 +1,7 @@
 use clap::ValueEnum;
+use eth::types::Address;
 use serde::Deserialize;
+use std::collections::HashSet;
 use std::{fs, path::PathBuf};
 
 /// Where chain data should be retrieved from
@@ -23,6 +25,8 @@ pub struct HandlerConfig {
     pub uri_retry_blocks: i64,
     /// Node Batch Request Delay (ms)
     pub batch_delay: u64,
+    /// List of Token Contract addresses to avoid making tokenUri requests for.
+    pub token_avoid_list: HashSet<Address>,
 }
 
 impl HandlerConfig {

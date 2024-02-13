@@ -26,6 +26,7 @@ async fn main() -> Result<()> {
             db_schema: args.db_schema,
             uri_retry_blocks: args.uri_retry_blocks,
             batch_delay: args.node_batch_delay,
+            token_avoid_list: args.token_avoid_list.into_iter().collect(),
         },
     )
     .expect("error constructing EventProcessor");
