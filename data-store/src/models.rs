@@ -6,6 +6,7 @@ use eth::types::{Address, BlockData, Bytes32, NftId, TxDetails, U256};
 use event_retriever::db_reader::models::{ApprovalForAll as ApprovalEvent, EventBase};
 use serde::Serialize;
 use serde_json::Value;
+use std::collections::HashSet;
 
 #[derive(Queryable, Selectable, Insertable, AsChangeset, Debug, Clone, PartialEq, Eq)]
 #[diesel(table_name = approval_for_all)]
@@ -169,6 +170,15 @@ impl Nft {
     pub fn event_applied(&self, base: &EventBase) -> bool {
         (base.block_number as i64, base.log_index as i64)
             <= (self.last_update_block, self.last_update_log_index)
+    }
+
+    pub fn is_fetch_worthy(&self, avoid_list: &HashSet<Address>, retry_blocks: &i64) -> bool {
+        let filter_criteria = [
+            self.token_uri.is_none(),
+            self.last_update_block - self.mint_block < *retry_blocks,
+            !avoid_list.contains(&self.contract_address),
+        ];
+        filter_criteria.iter().all(|x| *x)
     }
 }
 
@@ -446,5 +456,38 @@ mod tests {
             doc_hash(&document),
             vec![124, 98, 30, 175, 161, 39, 233, 146, 42, 191, 65, 112, 29, 74, 42, 204]
         )
+    }
+
+    #[test]
+    fn fetch_worthy_token_filter() {
+        let contract_address = Address::from(1);
+        let base = EventBase {
+            block_number: 1,
+            log_index: 2,
+            transaction_index: 3,
+            contract_address,
+        };
+        let nft_id = NftId {
+            address: contract_address,
+            token_id: U256::from(123),
+        };
+        let from = Address::from(1);
+        let tx = TxDetails {
+            hash: Bytes32::from(1),
+            from,
+            to: Some(Address::from(2)),
+        };
+        let nft = Nft::new(&base, &nft_id, &tx);
+
+        let mut avoid_list = HashSet::new();
+        assert!(nft.token_uri.is_none());
+        assert_eq!(nft.last_update_block - nft.last_update_block, 0);
+
+        // Starts as fetch-worthy with empty avoid list.
+        assert!(nft.is_fetch_worthy(&avoid_list, &1));
+
+        // Now avoid fetching for this token's contract address.
+        avoid_list.insert(contract_address);
+        assert!(!nft.is_fetch_worthy(&avoid_list, &1));
     }
 }

@@ -126,9 +126,10 @@ impl EventProcessor {
                     // Without additional specification here this will retry to fetch things
                     // We can prevent this by perhaps by filtering also for range.start < mint_block
                     .filter(|(_, token)| {
-                        token.token_uri.is_none()
-                            && token.last_update_block - token.mint_block
-                                < self.config.uri_retry_blocks
+                        token.is_fetch_worthy(
+                            &self.config.token_avoid_list,
+                            &self.config.uri_retry_blocks,
+                        )
                     })
                     .map(|(id, _)| id)
                     .collect::<Vec<_>>()
@@ -245,6 +246,7 @@ impl EventProcessor {
 mod tests {
     use super::*;
     use event_retriever::db_reader::diesel::BlockRange;
+    use std::collections::HashSet;
     use tracing_test::traced_test;
     static TEST_SOURCE_URL: &str = "postgresql://postgres:postgres@localhost:5432/arak";
     static TEST_STORE_URL: &str = "postgresql://postgres:postgres@localhost:5432/store";
@@ -262,6 +264,7 @@ mod tests {
                 db_schema: "public".to_string(),
                 uri_retry_blocks: 100,
                 batch_delay: 1,
+                token_avoid_list: HashSet::new(),
             },
             Some(PubSubClient::local_emulator().await),
         )
