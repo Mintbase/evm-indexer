@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
         args.source_url.as_str(),
         args.store_url.as_str(),
         args.node_url.as_str(),
-        config
+        config,
         Some(PubSubClient::from_env().await?),
     )?;
 
