@@ -1,5 +1,6 @@
 use crate::config::ChainDataSource;
 
+use eth::types::Address;
 use url::Url;
 
 #[derive(Debug, clap::Parser)]
@@ -43,4 +44,8 @@ pub struct Args {
     /// Include to skip additional on-chain data fetching
     #[clap(long, env)]
     pub skip_node_fetching: bool,
+
+    /// List of Token Contract addresses to avoid making tokenUri requests for.
+    #[clap(long, env, use_value_delimiter = true)]
+    pub token_avoid_list: Vec<Address>,
 }
