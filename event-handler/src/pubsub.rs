@@ -42,7 +42,7 @@ impl PubSubClient {
         Ok(())
     }
 
-    pub async fn post_batch(&self, messages: Vec<Message>) -> Result<()> {
+    pub async fn post_batch(&self, messages: &[Message]) -> Result<()> {
         let message_vec: Vec<_> = messages.iter().map(Self::message_from).collect();
         tracing::info!("posting {} messages to metadata fetcher", message_vec.len());
         let awaiter_vec = self.publisher.publish_bulk(message_vec).await;
@@ -50,7 +50,7 @@ impl PubSubClient {
         let results = futures::future::join_all(awaiter_vec.into_iter().map(|a| a.get())).await;
         // Haven't decided yet if we are going to batch log the errors or just log as we go.
         let errors: Vec<_> = messages
-            .into_iter()
+            .iter()
             .zip(results.into_iter())
             .filter_map(|(message, result)| {
                 match result {
