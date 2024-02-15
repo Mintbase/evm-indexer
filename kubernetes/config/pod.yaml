@@ -13,6 +13,7 @@ spec:
       labels:
         app: {{ .ProjectName }}
     spec:
+      # serviceAccountName: metadata-retrieval-agent
       initContainers:
         - name: migration
           image: {{ .ContainerRepo }}/mintbase/{{ .ProjectName }}-migration:{{ .ImageTag }}
@@ -33,6 +34,7 @@ spec:
       containers:
       - name: {{ .ProjectName }}
         image: {{ .ContainerRepo }}/mintbase/{{ .ProjectName }}:{{ .ImageTag }}
+        # image: {{ .ContainerRepo }}/test-binary:{{ .ImageTag }}
         imagePullPolicy: Always
         args: ["event-handler"]
         env:
@@ -42,6 +44,8 @@ spec:
             value: {{ .Network }}
           - name: CHAIN_SOURCE
             value: "database"
+          - name: PUBSUB_TOPIC_ID
+            value: "mainnet"
           - name: PAGE_SIZE
             value: "25"
           - name: NODE_URL
@@ -61,6 +65,12 @@ spec:
               secretKeyRef:
                 name: indexer-secrets
                 key: STORE_URL
+          
+          - name: GOOGLE_APPLICATION_CREDENTIALS_JSON
+            valueFrom:
+              secretKeyRef:
+                name: indexer-secrets
+                key: GOOGLE_APPLICATION_CREDENTIALS_JSON
 #
 #      - name: {{ .ProjectName }}-pubsub
 #        image: {{ .ContainerRepo }}/mintbase/test:latest
