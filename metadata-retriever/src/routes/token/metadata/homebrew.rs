@@ -27,18 +27,18 @@ impl MetadataFetching for Homebrew {
         tracing::debug!("parsed tokenUri as {:?}", metadata_url);
 
         // TODO - implement token type indication.
-        // if token.type_ == erc::ERCNFTType::ERC1155 {
+        //  if token.type_ == erc::ERCNFTType::ERC1155 {
         //     metadata_url.set_path(
         //         &metadata_url
         //             .path()
         //             .replace("%7Bid%7D", &hex::encode(token.id)),
         //     );
-        // }
+        //  }
         if metadata_url.scheme() == "ipfs" {
             metadata_url = http_link_ipfs(metadata_url)?;
         }
 
-        // If ERC1155 we need to do a replacement on the url.
+        // If ERC1155 we (may) need to do a replacement on the url.
         tracing::debug!("Reqwest content at {metadata_url}");
         let value: Value = reqwest::get(metadata_url).await?.json().await?;
         tracing::debug!("Reqwest response {:?}", value);

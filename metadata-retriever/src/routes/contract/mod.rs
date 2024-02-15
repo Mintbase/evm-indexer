@@ -26,6 +26,8 @@ impl RequestHandler<Address> for AppData {
                             None => None,
                         },
                         Err(err) => {
+                            // TODO - Set Empty if nothing.
+                            //  https://github.com/Mintbase/evm-indexer/issues/155
                             tracing::error!("failed abi fetch for {address}: {err:?}");
                             None
                         }
