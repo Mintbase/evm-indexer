@@ -1,3 +1,4 @@
+use actix_web::HttpResponse;
 use data_store::models::ContractAbi;
 use eth::types::Address;
 use futures::stream::{self, StreamExt};
@@ -11,7 +12,7 @@ pub mod abi;
 
 #[async_trait::async_trait]
 impl RequestHandler<Address> for AppData {
-    async fn process_request(&self, addresses: &[Address]) -> String {
+    async fn process_request(&self, addresses: &[Address]) -> HttpResponse {
         let abis: Vec<_> = stream::iter(addresses)
             .then(|address| {
                 let app_ref = self.clone();
@@ -19,13 +20,13 @@ impl RequestHandler<Address> for AppData {
                     match app_ref.abi_fetcher.get_contract_abi(*address).await {
                         Ok(possible_abi) => match possible_abi {
                             Some(abi) => {
-                                tracing::debug!("Found contract abi for {address}");
+                                tracing::debug!("found contract abi for {address}");
                                 Some((*address, ContractAbi::from(abi)))
                             }
                             None => None,
                         },
                         Err(err) => {
-                            tracing::warn!("Failed to get abi for {address}: {err:?}");
+                            tracing::error!("failed abi fetch for {address}: {err:?}");
                             None
                         }
                     }
@@ -42,6 +43,10 @@ impl RequestHandler<Address> for AppData {
             .expect("failed to lock mutex")
             .insert_contract_abis(&abis);
 
-        return format!("Processed request for {} contracts", addresses.len());
+        return HttpResponse::Ok().body(format!(
+            "added {}/{} abi files",
+            abis.len(),
+            addresses.len()
+        ));
     }
 }
