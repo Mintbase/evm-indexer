@@ -24,7 +24,7 @@ fn erc721_contract_at_address(
 #[async_trait::async_trait]
 trait RetryGet<T: Send> {
     async fn try_get(&self) -> Result<T>;
-    fn is_retryable_error(error: &anyhow::Error) -> bool {
+    fn is_retryable_error(error: &Error) -> bool {
         let error_string = error.to_string();
         if error_string.contains("Contract call reverted with data:") {
             let hex_string = error_string
@@ -311,7 +311,6 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::U256;
     use diesel::internal::derives::multiconnection::chrono::NaiveDateTime;
     use maplit::hashmap;
     use std::str::FromStr;
@@ -351,14 +350,7 @@ mod tests {
     #[tokio::test]
     async fn get_erc721_uri() {
         let eth_client = test_client();
-        let ens_token = NftId {
-            address: Address::from_str("0x57F1887A8BF19B14FC0DF6FD9B2ACC9AF147EA85").unwrap(),
-            token_id: U256::from_dec_str(
-                "64671196571681841248190411691641946869002480279128285790058847953168666315",
-            )
-            .unwrap(),
-        };
-
+        let ens_token = NftId::from_str("0x57F1887A8BF19B14FC0DF6FD9B2ACC9AF147EA85/64671196571681841248190411691641946869002480279128285790058847953168666315").unwrap();
         assert_eq!(
             eth_client
                 .get_erc721_uri(ens_token)
@@ -368,18 +360,11 @@ mod tests {
             "Contract call reverted with data: 0x".to_string()
         );
 
-        let bored_ape = NftId {
-            address: Address::from_str("0x2EE6AF0DFF3A1CE3F7E3414C52C48FD50D73691E").unwrap(),
-            token_id: U256::from(16),
-        };
-
+        let bored_ape = NftId::from_str("0x2EE6AF0DFF3A1CE3F7E3414C52C48FD50D73691E/16").unwrap();
         assert!(eth_client.get_erc721_uri(bored_ape).await.is_ok());
 
-        let mla_field_agent = NftId {
-            address: Address::from_str("0x7A41E410BB784D9875FA14F2D7D2FA825466CDAE").unwrap(),
-            token_id: U256::from(3490),
-        };
-
+        let mla_field_agent =
+            NftId::from_str("0x7A41E410BB784D9875FA14F2D7D2FA825466CDAE/3490").unwrap();
         assert_eq!(
             eth_client
                 .get_erc721_uri(mla_field_agent)
