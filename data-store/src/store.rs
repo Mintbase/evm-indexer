@@ -532,7 +532,7 @@ impl diesel::r2d2::CustomizeConnection<PgConnection, diesel::r2d2::Error> for Se
         // Use the connection to execute your custom SQL command
         diesel::sql_query(format!("SET search_path TO {};", *self.schema))
             .execute(conn)
-            .map_err(|e| diesel::r2d2::Error::QueryError(e))?;
+            .map_err(diesel::r2d2::Error::QueryError)?;
         Ok(())
     }
 }
