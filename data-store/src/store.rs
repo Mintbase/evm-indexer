@@ -60,10 +60,7 @@ impl DataStore {
             .parse::<usize>()
             .context("parse num_threads")?;
 
-        let pool = Self::get_connection_pool(connection, pool_size, num_threads)?;
-        diesel::sql_query(format!("SET search_path TO {schema};"))
-            .execute(&mut pool.get()?)
-            .expect("Error setting search path");
+        let pool = Self::get_connection_pool(connection, schema, pool_size, num_threads)?;
         Ok(Self { pool })
     }
 
@@ -507,6 +504,7 @@ impl DataStore {
 
     fn get_connection_pool(
         db_url: &str,
+        schema: &str,
         pool_size: u32,
         num_threads: usize,
     ) -> Result<Pool<ConnectionManager<PgConnection>>> {
@@ -515,8 +513,27 @@ impl DataStore {
             .max_size(pool_size) // Should be a configurable env var
             .test_on_check_out(true)
             .thread_pool(Arc::new(ScheduledThreadPool::new(num_threads)))
+            .connection_customizer(Box::new(SearchPathCustomizer {
+                schema: Arc::new(schema.to_string()),
+            }))
             .build(manager)
             .context("build connection pool")
+    }
+}
+
+#[derive(Debug)]
+struct SearchPathCustomizer {
+    schema: Arc<String>,
+}
+
+// Implement the CustomizeConnection trait for your struct
+impl diesel::r2d2::CustomizeConnection<PgConnection, diesel::r2d2::Error> for SearchPathCustomizer {
+    fn on_acquire(&self, conn: &mut PgConnection) -> Result<(), diesel::r2d2::Error> {
+        // Use the connection to execute your custom SQL command
+        diesel::sql_query(format!("SET search_path TO {};", *self.schema))
+            .execute(conn)
+            .map_err(|e| diesel::r2d2::Error::QueryError(e))?;
+        Ok(())
     }
 }
 
