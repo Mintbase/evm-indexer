@@ -111,6 +111,9 @@ impl U256 {
             Err(err) => Err(err),
         }
     }
+
+    pub const MIN: Self = Self(Uint256::MIN);
+    pub const MAX: Self = Self(Uint256::MAX);
 }
 
 #[cfg(test)]
@@ -131,7 +134,7 @@ mod tests {
             U256::from(ethers::types::U256::from_dec_str(num_string).unwrap())
         );
         // Max
-        assert_eq!(U256(Uint256::MAX), U256::from(ethers::types::U256::MAX));
+        assert_eq!(U256::MAX, U256::from(ethers::types::U256::MAX));
     }
 
     #[test]
