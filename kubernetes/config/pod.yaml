@@ -13,7 +13,6 @@ spec:
       labels:
         app: {{ .ProjectName }}
     spec:
-      # serviceAccountName: metadata-retrieval-agent
       initContainers:
         - name: migration
           image: {{ .ContainerRepo }}/mintbase/{{ .ProjectName }}-migration:{{ .ImageTag }}
