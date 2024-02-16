@@ -1,4 +1,10 @@
 [workspace]
 resolver = "2"
 
-members = ["data-store", "eth", "event-retriever", "event-handler"]
+members = [
+  "data-store",
+  "eth",
+  "event-retriever",
+  "event-handler",
+  "metadata-retriever",
+]
