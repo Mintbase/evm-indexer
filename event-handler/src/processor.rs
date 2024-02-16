@@ -225,7 +225,10 @@ impl EventProcessor {
         // Only after we have written updates to DB do we make the posts.
         // This is so that records are known to exist when pubsub trys to update them.
         if let Some(pubsub_client) = &self.metadata_client {
-            let _ = pubsub_client.post_batch(data_posts).await;
+            // Max Message Batch is 1000
+            for chunk in data_posts.chunks(1000) {
+                let _ = pubsub_client.post_batch(chunk).await;
+            }
         }
 
         Ok(())
