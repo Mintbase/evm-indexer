@@ -77,6 +77,7 @@ pub mod test_util {
                 batch_delay: 1,
                 token_avoid_list: HashSet::new(),
             },
+            None,
         )
         .unwrap()
     }

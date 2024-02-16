@@ -2,7 +2,9 @@ extern crate event_handler;
 
 use anyhow::Result;
 use clap::Parser;
-use event_handler::{cli::Args, config::HandlerConfig, processor::EventProcessor};
+use event_handler::{
+    cli::Args, config::HandlerConfig, processor::EventProcessor, pubsub::PubSubClient,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -29,8 +31,9 @@ async fn main() -> Result<()> {
         args.store_url.as_str(),
         args.node_url.as_str(),
         config,
-    )
-    .expect("error constructing EventProcessor");
+        Some(PubSubClient::from_env().await?),
+    )?;
+
     let start_from = handler.store.get_processed_block() + 1;
     tracing::info!("beginning event processor from {start_from}");
     handler.run(start_from).await

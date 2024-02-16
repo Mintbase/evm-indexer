@@ -1639,7 +1639,10 @@ dependencies = [
  "eth",
  "event-retriever",
  "futures",
+ "google-cloud-googleapis",
+ "google-cloud-pubsub",
  "serde",
+ "serde_json",
  "tokio",
  "toml 0.8.8",
  "tracing",
@@ -1993,9 +1996,9 @@ dependencies = [
 
 [[package]]
 name = "google-cloud-pubsub"
-version = "0.22.0"
+version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72c96d7e0fd07ecbce85bc8420bb7a049bb70ea74036e59fbee1a51deaa79216"
+checksum = "0f6e4fdcd8303ad0d0cdb8b5722aa3a57de9534af27d4da71fc4d3179174a896"
 dependencies = [
  "async-channel",
  "async-stream",
