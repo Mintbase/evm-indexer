@@ -51,8 +51,6 @@ async fn main() -> std::io::Result<()> {
 
     let config = Config::from_env().expect("Config error!");
     let state = AppData::new(config).await;
-    // TODO - Add API-Key Auth for this service:
-    //  https://github.com/Mintbase/evm-indexer/issues/154
     HttpServer::new(move || {
         App::new()
             .app_data(Data::new(state.clone()))
