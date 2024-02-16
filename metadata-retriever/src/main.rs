@@ -4,12 +4,11 @@ mod routes;
 
 use actix_web::{
     web::{self, Data},
-    App, HttpServer, Responder,
+    App, HttpResponse, HttpServer, Responder,
 };
 use app::AppData;
 use config::Config;
 use eth::types::{Address, Message, NftId};
-// use google_cloud_pubsub::client::ClientConfig;
 use std::env;
 
 use crate::routes::RequestHandler;
@@ -31,23 +30,21 @@ fn partition_requests(payload: Vec<Message>) -> (Vec<Address>, Vec<(NftId, Optio
 }
 
 async fn pubsub_callback(data: web::Bytes, state: Data<AppData>) -> impl Responder {
-    println!(
-        "Byte String: {:?}",
-        serde_json::from_slice::<serde_json::Value>(&data)
-    );
     if let Ok(batch) = serde_json::from_slice::<Vec<Message>>(&data) {
         let (contracts, tokens) = partition_requests(batch);
-        tracing::info!(
-            "received {} contract and {} token messages for",
+        tracing::warn!(
+            "received batch request with {} contract and {} token messages for",
             contracts.len(),
             tokens.len()
         );
         state.process_request(&contracts).await;
         state.process_request(&tokens).await;
+        HttpResponse::Ok().body("Batch processed successfully")
     } else {
-        // Attempt to parse single entry
+        let json_data = serde_json::from_slice::<serde_json::Value>(&data);
+        tracing::info!("received single message with {:?} bytes", data.len());
         if let Ok(message) = serde_json::from_slice::<Message>(&data) {
-            let result = match message {
+            match message {
                 Message::Contract { address } => state.process_request(&[address]).await,
                 Message::Token {
                     address,
@@ -58,14 +55,14 @@ async fn pubsub_callback(data: web::Bytes, state: Data<AppData>) -> impl Respond
                         .process_request(&[(NftId { address, token_id }, token_uri)])
                         .await
                 }
-            };
-            return result;
+            }
         } else {
             tracing::warn!("Received unrecognized message format {:?}", data);
+            HttpResponse::BadRequest().body(format!(
+                "Received unrecognized message format {json_data:?}"
+            ))
         }
     }
-    // TODO - return an actual status to sender.
-    "Message received and processed successfully".to_string()
 }
 
 #[actix_web::main]
@@ -73,7 +70,10 @@ async fn main() -> std::io::Result<()> {
     dotenv::dotenv().ok();
     // Default logs set to info (use RUST_LOGS to override).
     let subscriber = tracing_subscriber::FmtSubscriber::builder()
-        .with_env_filter(env::var("RUST_LOGS").unwrap_or("debug".to_string()))
+        .with_env_filter(
+            env::var("RUST_LOGS")
+                .unwrap_or("info,metadata_retriever=debug,actix_web=warn".to_string()),
+        )
         .with_ansi(false)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
@@ -93,7 +93,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(Data::new(state.clone()))
             .service(web::resource("/pubsub_callback").route(web::post().to(pubsub_callback)))
-            .wrap(tracing_actix_web::TracingLogger::default())
+        // .wrap(tracing_actix_web::TracingLogger::default())
     })
     .bind("0.0.0.0:8080")?
     .run()

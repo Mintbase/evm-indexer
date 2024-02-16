@@ -18,7 +18,10 @@ impl MetadataFetching for Homebrew {
             _ => uri,
         };
         let mut metadata_url = match uri {
-            None => return Err(anyhow!("Empty bytes for metadata url!")),
+            None => {
+                // TODO - use the TokenId only and attempt to read from Alchemy.
+                return Err(anyhow!("Empty bytes for metadata url!"));
+            }
             Some(token_uri) => Url::parse(&token_uri)?,
         };
         tracing::debug!("parsed tokenUri as {:?}", metadata_url);
