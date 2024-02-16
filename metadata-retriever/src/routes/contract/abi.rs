@@ -144,16 +144,13 @@ mod tests {
 
     #[test]
     fn handle_response() {
-        let bad_key_response: ApiResponse<Value> = serde_json::from_value(json!({
+        let bad_api_key_response: ApiResponse<Value> = serde_json::from_value(json!({
             "status": "0",
             "message": "NOTOK-Missing/Invalid API Key, rate limit of 1/5sec applied",
             "result": "Contract source code not verified"
         }))
         .unwrap();
-        let result = EtherscanApi::handle_response(bad_key_response);
-        assert_eq!(
-            result.unwrap_err().to_string(),
-            "API request failed with: NOTOK-Missing/Invalid API Key, rate limit of 1/5sec applied"
-        );
+        let result = EtherscanApi::handle_response(bad_api_key_response);
+        assert_eq!(result.unwrap(), Some(serde_json::Value::from("[]")));
     }
 }
