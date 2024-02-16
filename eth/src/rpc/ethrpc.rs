@@ -32,7 +32,7 @@ fn handle_error(error: EthRpcError, context: &str) {
             panic!("Http Error {}", err);
         }
         Error::Status(code, message) => {
-            panic!("Status Error with code {code} and message {}", message);
+            panic!("Status Error with code {} and message {}", code, message);
         }
         Error::Rpc(err) => {
             let known_rpc_errors = [
@@ -42,7 +42,7 @@ fn handle_error(error: EthRpcError, context: &str) {
                 // Contract method is unable to respond to the given input.
                 "out of gas",
             ];
-            if !(known_rpc_errors.iter().any(|e| err.message.contains(e))) {
+            if !known_rpc_errors.iter().any(|e| err.message.contains(e)) {
                 tracing::warn!("request failed: {context} with {err:?}");
             }
             // Contract function does not exist or no longer returns a value for given input.
@@ -187,7 +187,7 @@ impl Client {
     fn unpack_results<T: Debug>(results: Vec<Result<T, Error>>) -> (Vec<T>, Vec<Error>) {
         let (oks, errors): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
         let oks: Vec<_> = oks.into_iter().map(Result::unwrap).collect();
-        let errors: Vec<ethrpc::http::Error> = errors.into_iter().map(Result::unwrap_err).collect();
+        let errors: Vec<Error> = errors.into_iter().map(Result::unwrap_err).collect();
         (oks, errors)
     }
 
@@ -237,9 +237,7 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
-    use crate::types::U256;
     use ethrpc::jsonrpc;
     use maplit::hashmap;
     use std::str::FromStr;
@@ -333,29 +331,13 @@ mod tests {
     #[tokio::test]
     async fn get_erc721_uri() {
         let eth_client = test_client();
-        let ens_token = NftId {
-            address: Address::from_str("0x57F1887A8BF19B14FC0DF6FD9B2ACC9AF147EA85").unwrap(),
-            token_id: U256::from_dec_str(
-                "64671196571681841248190411691641946869002480279128285790058847953168666315",
-            )
-            .unwrap(),
-        };
-        let bored_ape = NftId {
-            address: Address::from_str("0x2EE6AF0DFF3A1CE3F7E3414C52C48FD50D73691E").unwrap(),
-            token_id: U256::from(16),
-        };
-        let mla_field_agent = NftId {
-            address: Address::from_str("0x7A41E410BB784D9875FA14F2D7D2FA825466CDAE").unwrap(),
-            token_id: U256::from(3490),
-        };
+        let ens_token = NftId::from_str("0x57F1887A8BF19B14FC0DF6FD9B2ACC9AF147EA85/64671196571681841248190411691641946869002480279128285790058847953168666315").unwrap();
+        let bored_ape = NftId::from_str("0x2EE6AF0DFF3A1CE3F7E3414C52C48FD50D73691E/16").unwrap();
+        let mla_field_agent =
+            NftId::from_str("0x7A41E410BB784D9875FA14F2D7D2FA825466CDAE/3490").unwrap();
+        let null_bytes =
+            NftId::from_str("0xcf3a65864DFB6d4aEAaa93Dde66ad3deb227c3E3/10063").unwrap();
 
-        let null_bytes = NftId {
-            address: Address::from([
-                207, 58, 101, 134, 77, 251, 109, 74, 234, 170, 147, 221, 230, 106, 211, 222, 178,
-                39, 195, 227,
-            ]),
-            token_id: U256::from(10063),
-        };
         let token_ids = [ens_token, bored_ape, mla_field_agent, null_bytes];
 
         let uris = eth_client.get_uris(&token_ids).await;
