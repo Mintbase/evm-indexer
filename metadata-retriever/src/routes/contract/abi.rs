@@ -78,7 +78,7 @@ impl EtherscanApi {
 #[async_trait::async_trait]
 impl AbiFetching for EtherscanApi {
     async fn get_contract_abi(&self, address: Address) -> Result<Option<Value>> {
-        const MAX_RETRIES: usize = 1;
+        const MAX_RETRIES: usize = 5;
         const INITIAL_BACKOFF: u64 = 1000; // Initial backoff in milliseconds
 
         let mut retries = 0;
@@ -90,7 +90,7 @@ impl AbiFetching for EtherscanApi {
                 Ok(result) => return Ok(result),
                 Err(error) if retries < MAX_RETRIES => {
                     tracing::info!(
-                        "attempt {} failed with {:?} retrying in {backoff}",
+                        "attempt {} failed with {:?} retrying in {backoff} ms",
                         retries + 1,
                         error
                     );
