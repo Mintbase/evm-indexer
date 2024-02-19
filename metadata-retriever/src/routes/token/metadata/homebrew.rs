@@ -111,15 +111,10 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "this domain seems to be down"]
     async fn ens_override() {
         let content_result = get_fetcher()
             .get_nft_metadata(
-                NftId {
-                    address: Address::from_str("0x57F1887A8BF19B14FC0DF6FD9B2ACC9AF147EA85")
-                        .unwrap(),
-                    token_id: U256::from(100),
-                },
+                NftId::from_str("0x57F1887A8BF19B14FC0DF6FD9B2ACC9AF147EA85/29779156741555693913844064206490564547787150513426002335927947804027615620901").unwrap(),
                 None,
             )
             .await;
