@@ -2,12 +2,33 @@ use crate::routes::token::metadata::util::{http_link_ipfs, ENS_URI};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use eth::types::{NftId, ENS_ADDRESS};
+use reqwest::Response;
 use serde_json::Value;
+use std::time::Duration;
 use url::Url;
 
 use super::MetadataFetching;
 
-pub struct Homebrew {}
+pub struct Homebrew {
+    client: reqwest::Client,
+}
+
+impl Homebrew {
+    pub fn new(timeout_seconds: u64) -> Result<Self> {
+        Ok(Self {
+            client: reqwest::Client::builder()
+                .timeout(Duration::from_secs(timeout_seconds))
+                .build()?,
+        })
+    }
+
+    async fn make_request(&self, url: Url) -> Result<Response, reqwest::Error> {
+        let response = self.client.get(url).send().await?;
+        // Ensure the request was successful and map the error if not
+        response.error_for_status_ref()?;
+        Ok(response)
+    }
+}
 
 #[async_trait]
 impl MetadataFetching for Homebrew {
@@ -20,7 +41,7 @@ impl MetadataFetching for Homebrew {
         let mut metadata_url = match uri {
             None => {
                 // TODO - use the TokenId only and attempt to read from Alchemy.
-                return Err(anyhow!("Empty bytes for metadata url!"));
+                return Err(anyhow!("empty metadata url!"));
             }
             Some(token_uri) => Url::parse(&token_uri)?,
         };
@@ -39,12 +60,26 @@ impl MetadataFetching for Homebrew {
         }
 
         // If ERC1155 we (may) need to do a replacement on the url.
-        tracing::debug!("Reqwest content at {metadata_url}");
-        let value: Value = reqwest::get(metadata_url).await?.json().await?;
-        tracing::debug!("Reqwest response {:?}", value);
-        Ok(value)
-        // TODO serialize as NftContent.
-        // serde_json::from_value::<NftContent>(value).context("serialize")
+        tracing::debug!("fetching content at {metadata_url}");
+
+        match self.make_request(metadata_url.clone()).await {
+            Ok(response) => {
+                let value: Value = response.json().await?;
+                tracing::debug!("received response {:?}", value);
+                // TODO serialize as NftContent.
+                // serde_json::from_value::<NftContent>(value).context("serialize")
+                Ok(value)
+            }
+            Err(e) => {
+                if e.is_timeout() {
+                    // Handle timeout specifically
+                    tracing::warn!("Request timed out - suspected bad url: {}", metadata_url);
+                    // TODO - should we use a special value like "timeout" here?
+                    return Ok(serde_json::Value::from("[]"));
+                }
+                Err(anyhow::Error::from(e))
+            }
+        }
     }
 }
 
@@ -56,10 +91,13 @@ mod tests {
 
     use super::*;
 
+    fn get_fetcher() -> Homebrew {
+        Homebrew::new(2).unwrap()
+    }
+
     #[tokio::test]
     async fn get_metadata_ipfs() {
-        let fetcher = Homebrew {};
-        let content_result = fetcher
+        let content_result = get_fetcher()
             .get_nft_metadata(
                 NftId {
                     address: Address::from_str("0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d")
@@ -74,7 +112,7 @@ mod tests {
 
     #[tokio::test]
     async fn ens_override() {
-        let content_result = Homebrew {}
+        let content_result = get_fetcher()
             .get_nft_metadata(
                 NftId {
                     address: Address::from_str("0x57F1887A8BF19B14FC0DF6FD9B2ACC9AF147EA85")
@@ -88,17 +126,27 @@ mod tests {
     }
 
     #[tokio::test]
+    #[tracing_test::traced_test]
     async fn get_metadata_failure() {
+        let fetcher = get_fetcher();
         // Enjin
         // No uri because of: https://enjin.io/blog/nft-migration-to-enjin-blockchain-starts-december-8
-        let token = NftId {
-            address: Address::from_str("0xFAAFDC07907FF5120A76B34B731B278C38D6043C").unwrap(),
-            token_id: U256::from_dec_str(
-                "10855508365998405147019449313071050427871334385647330815536805870982878199808",
-            )
-            .unwrap(),
-        };
-        assert!(Homebrew {}.get_nft_metadata(token, None).await.is_err())
+        let token = NftId::from_str("0xFAAFDC07907FF5120A76B34B731B278C38D6043C/10855508365998405147019449313071050427871334385647330815536805870982878199808").unwrap();
+        assert_eq!(
+            fetcher
+                .get_nft_metadata(token, None)
+                .await
+                .unwrap_err()
+                .to_string(),
+            "Empty metadata url!"
+        );
+    }
+    #[tokio::test]
+    async fn get_metadata_timeout() {
+        // Known Timeout URL.
+        let token = NftId::from_str("0x42C24AF9C858C6AC5D65F8F0575B9655DD53C8AE/322").unwrap();
+        let result = get_fetcher().get_nft_metadata(token, Some("https://ipfs.virtualhosting.hk/srclub.io/ipfs/QmYjTyaCRzKiTNXHVL93sUS3R5tuDDQofQ7pj8hL6CTR3J/322.json".into())).await;
+        assert!(result.is_ok());
     }
 
     #[tokio::test]
@@ -107,7 +155,8 @@ mod tests {
             address: Address::from_str("0x659A4BDAAACC62D2BD9CB18225D9C89B5B697A5A").unwrap(),
             token_id: U256::from_dec_str("1200").unwrap(),
         };
-        let result = Homebrew {}
+        let result = Homebrew::new(2)
+            .unwrap()
             .get_nft_metadata(
                 token,
                 Some("https://fateofwagdie.com/api/characters/metadata/1200".into()),
@@ -129,7 +178,7 @@ mod tests {
             "https://5h5jydmla4qvcjvmdgcgnnkdhy0ddrod.lambda-url.us-east-2.on.aws/?id=2325&data="
                 .into(),
         );
-        let result = Homebrew {}.get_nft_metadata(token, bad_uri).await;
+        let result = get_fetcher().get_nft_metadata(token, bad_uri).await;
         assert!(result.is_ok());
     }
 }
