@@ -54,8 +54,9 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(Data::new(state.clone()))
+            // 2Mb
+            .app_data(web::PayloadConfig::new(2 * 1024 * 1024))
             .service(web::resource("/pubsub_callback").route(web::post().to(pubsub_callback)))
-        // .wrap(tracing_actix_web::TracingLogger::default())
     })
     .bind("0.0.0.0:8080")?
     .run()
