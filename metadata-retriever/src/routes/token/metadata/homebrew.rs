@@ -166,10 +166,7 @@ mod tests {
     #[tracing_test::traced_test]
     #[ignore = "passes locally but not on github actions: https://github.com/Mintbase/evm-indexer/issues/136"]
     async fn get_metadata_bad_chars() {
-        let token = NftId {
-            address: Address::from_str("0xcf3a65864DFB6d4aEAaa93Dde66ad3deb227c3E3").unwrap(),
-            token_id: U256::from_dec_str("2325").unwrap(),
-        };
+        let token = NftId::from_str("0xcf3a65864DFB6d4aEAaa93Dde66ad3deb227c3E3/2325").unwrap();
         let bad_uri = Some(
             "https://5h5jydmla4qvcjvmdgcgnnkdhy0ddrod.lambda-url.us-east-2.on.aws/?id=2325&data="
                 .into(),
