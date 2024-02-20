@@ -58,6 +58,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::PayloadConfig::new(2 * 1024 * 1024))
             .service(web::resource("/pubsub_callback").route(web::post().to(pubsub_callback)))
     })
+    .workers(25)
     .bind("0.0.0.0:8080")?
     .run()
     .await
