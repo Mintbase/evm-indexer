@@ -6,8 +6,8 @@ use reqwest::Response;
 use serde_json::Value;
 
 pub mod homebrew;
-mod util;
 mod ipfs;
+mod util;
 
 #[async_trait::async_trait]
 pub trait MetadataFetching: Send + Sync {

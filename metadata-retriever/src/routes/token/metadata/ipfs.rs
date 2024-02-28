@@ -1,9 +1,7 @@
-use crate::routes::token::metadata::util::TryFromStr;
+use crate::routes::token::metadata::util::{TryFromStr, IPFS_GATEWAY};
 use cid::Cid;
 use regex::Regex;
 use url::Url;
-
-pub const IPFS_GATEWAY: &str = "https://ipfs.io/ipfs/";
 pub const CID_REGEX: &str = r"(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[A-Za-z2-7]{58,}|B[A-Z2-7]{58,}|z[1-9A-HJ-NP-Za-km-z]{48,}|F[0-9A-F]{50,})";
 
 #[derive(Debug, PartialEq, Clone)]
@@ -41,7 +39,7 @@ impl TryFromStr for IpfsPath {
             r"{}[^/]*(?:/(?P<path>.+?))(?:[?#]|$)",
             regex::escape(cid_str)
         ))
-            .unwrap();
+        .unwrap();
         // Captures anything occurring after / beyond CID or None.
         let ext = match post_cid_re.captures(s) {
             Some(caps) => caps.get(1).map(|m| m.as_str().to_string()),
@@ -129,8 +127,8 @@ mod tests {
             &IpfsPath::try_from_str(
                 "https://cloudflare-ipfs.com/ipfs/QmQVHMRMhVGqQH4vPDgxK2Y3rnToQSVbbhbyTq7qnVbgoA"
             )
-                .unwrap()
-                .to_string(),
+            .unwrap()
+            .to_string(),
             "QmQVHMRMhVGqQH4vPDgxK2Y3rnToQSVbbhbyTq7qnVbgoA",
             "cloudflare"
         );
@@ -147,8 +145,8 @@ mod tests {
             &IpfsPath::try_from_str(
                 "https://arweave.net//bafkreidmsup4r2r6quyjjo553zqyc5rupttmupgnv7k24opc3f4jbolq3a"
             )
-                .unwrap()
-                .to_string(),
+            .unwrap()
+            .to_string(),
             "bafkreidmsup4r2r6quyjjo553zqyc5rupttmupgnv7k24opc3f4jbolq3a",
             "arweave"
         );
@@ -157,8 +155,8 @@ mod tests {
             &IpfsPath::try_from_str(
                 "https://QmQVHMRMhVGqQH4vPDgxK2Y3rnToQSVbbhbyTq7qnVbgoA.ipfs.dweb.link"
             )
-                .unwrap()
-                .to_string(),
+            .unwrap()
+            .to_string(),
             "QmQVHMRMhVGqQH4vPDgxK2Y3rnToQSVbbhbyTq7qnVbgoA",
             "dweb.link"
         );
@@ -183,8 +181,8 @@ mod tests {
             &IpfsPath::try_from_str(
                 "https://ipfs.fleek.co/ipfs/QmZQV5YXKakh7aKqSk3MVARNu8eaxws9KNc6EeStQTYt5w"
             )
-                .unwrap()
-                .to_string(),
+            .unwrap()
+            .to_string(),
             "QmZQV5YXKakh7aKqSk3MVARNu8eaxws9KNc6EeStQTYt5w",
             "fleek"
         );
@@ -193,11 +191,9 @@ mod tests {
             &IpfsPath::try_from_str(
                 "https://ipfs.io/ipfs/bafybeifj7sronkwlpvtkcguq3rztzmr3lun5zoom63vpl2czqukejqbfky"
             )
-                .unwrap()
-                .to_string(),
+            .unwrap()
+            .to_string(),
             "bafybeifj7sronkwlpvtkcguq3rztzmr3lun5zoom63vpl2czqukejqbfky"
         );
     }
 }
-
-
