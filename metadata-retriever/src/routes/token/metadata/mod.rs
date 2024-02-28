@@ -6,6 +6,7 @@ use reqwest::Response;
 use serde_json::Value;
 
 pub mod homebrew;
+mod ipfs;
 mod util;
 
 #[async_trait::async_trait]
