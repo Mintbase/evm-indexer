@@ -1,17 +1,16 @@
 use actix_web::HttpResponse;
 use eth::types::NftId;
 use futures::stream::{self, StreamExt};
-use serde_json::Value;
 pub mod metadata;
-use crate::app::AppData;
+use crate::{app::AppData, routes::RequestHandler};
 
-use super::RequestHandler;
 use async_trait;
+use data_store::models::NftMetadata;
 
 #[async_trait::async_trait]
 impl RequestHandler<(NftId, Option<String>)> for AppData {
     async fn process_request(&self, tokens: &[(NftId, Option<String>)]) -> HttpResponse {
-        let possible_content: Vec<Option<Value>> = stream::iter(tokens)
+        let possible_content: Vec<Option<_>> = stream::iter(tokens)
             .then(|(token, uri)| {
                 let app_ref = self.clone();
                 async move {
@@ -33,10 +32,10 @@ impl RequestHandler<(NftId, Option<String>)> for AppData {
             .collect()
             .await;
 
-        let updates: Vec<(NftId, Value)> = tokens
+        let updates: Vec<(NftId, NftMetadata)> = tokens
             .iter()
             .zip(possible_content)
-            .filter_map(|(token, content)| content.map(|value| ((token.0), value)))
+            .filter_map(|(token, content)| content.map(|value| ((token.0), value.into())))
             .collect();
         self.store
             .lock()

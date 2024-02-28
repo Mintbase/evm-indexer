@@ -94,7 +94,8 @@ impl ContractAbi {
 #[diesel(check_for_backend(diesel::pg::Pg))]
 pub struct NftMetadata {
     pub uid: Vec<u8>,
-    pub json: Value,
+    pub raw: String,
+    pub json: Option<Value>,
 }
 
 /// Evaluates the md5 hash of serde_json::Value
@@ -102,12 +103,13 @@ pub struct NftMetadata {
 fn doc_hash(value: &Value) -> Vec<u8> {
     md5::compute(value.to_string().as_bytes()).0.to_vec()
 }
+
 impl NftMetadata {
-    pub fn from(content: Value) -> Self {
-        let json = JsonDoc::new(content);
+    pub fn new(raw: &str, json: Option<Value>) -> Self {
         Self {
-            uid: json.hash,
-            json: json.value,
+            uid: md5::compute(raw.as_bytes()).0.to_vec(),
+            raw: raw.to_string(),
+            json,
         }
     }
 }

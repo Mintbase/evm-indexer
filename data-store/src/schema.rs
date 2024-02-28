@@ -36,7 +36,8 @@ diesel::table! {
 diesel::table! {
     nft_metadata (uid) {
         uid -> Bytea,
-        json -> Jsonb,
+        raw -> Text,
+        json -> Nullable<Jsonb>,
     }
 }
 

@@ -12,7 +12,6 @@ use diesel::{
 use eth::types::{Address, BlockData, ContractDetails, NftId, TxDetails};
 use event_retriever::db_reader::models::EventBase;
 use scheduled_thread_pool::ScheduledThreadPool;
-use serde_json::Value;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -68,13 +67,12 @@ impl DataStore {
         self.pool.get().expect("failed to get connection from pool")
     }
 
-    pub fn insert_metadata_batch(&mut self, updates: &[(NftId, Value)]) {
+    pub fn insert_metadata_batch(&mut self, updates: &[(NftId, NftMetadata)]) {
         let mut conn = self.get_connection();
 
         conn.transaction::<_, diesel::result::Error, _>(|conn| {
-            for (token, content) in updates {
-                let record = NftMetadata::from(content.clone());
-                let uid = record.clone().uid;
+            for (token, record) in updates {
+                let uid = record.uid.clone();
 
                 let result = diesel::insert_into(nft_metadata::dsl::nft_metadata)
                     .values(record)
@@ -750,7 +748,8 @@ mod tests {
         assert!(store.load_nft(&token_id).unwrap().metadata_id.is_none());
 
         let content = serde_json::json!("My JSON document!");
-        store.insert_metadata_batch(&[(token_id, content.clone())]);
+        let metadata = NftMetadata::new("raw String", Some(content.clone()));
+        store.insert_metadata_batch(&[(token_id, metadata.clone())]);
 
         let token = store.load_nft(&token_id).unwrap();
         assert!(token.metadata_id.is_some());
@@ -759,7 +758,7 @@ mod tests {
             .filter(nft_metadata::uid.eq::<Vec<u8>>(token.metadata_id.unwrap()))
             .load::<NftMetadata>(&mut store.get_connection())
             .unwrap();
-        assert_eq!(result, [NftMetadata::from(content)]);
+        assert_eq!(result, [metadata]);
     }
 
     #[test]
