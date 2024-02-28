@@ -3,11 +3,10 @@ use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use eth::types::{NftId, ENS_ADDRESS};
 use reqwest::Response;
-use serde_json::Value;
 use std::time::Duration;
 use url::Url;
 
-use super::MetadataFetching;
+use super::{FetchedMetadata, MetadataFetching};
 
 pub struct Homebrew {
     client: reqwest::Client,
@@ -32,7 +31,7 @@ impl Homebrew {
 
 #[async_trait]
 impl MetadataFetching for Homebrew {
-    async fn get_nft_metadata(&self, token: NftId, uri: Option<String>) -> Result<Value> {
+    async fn get_nft_metadata(&self, token: NftId, uri: Option<String>) -> Result<FetchedMetadata> {
         let uri = match token.address {
             // If ENS --> We know the URI.
             ENS_ADDRESS => Some(format!("{ENS_URI}/{}", token.token_id)),
@@ -61,23 +60,14 @@ impl MetadataFetching for Homebrew {
 
         // If ERC1155 we (may) need to do a replacement on the url.
         tracing::debug!("fetching content at {metadata_url}");
-
         match self.make_request(metadata_url.clone()).await {
-            Ok(response) => {
-                let value: Value = response.json().await?;
-                tracing::debug!("received response {:?}", value);
-                // TODO serialize as NftContent.
-                // serde_json::from_value::<NftContent>(value).context("serialize")
-                Ok(value)
-            }
+            Ok(response) => FetchedMetadata::from_response(response).await,
             Err(e) => {
                 if e.is_timeout() {
-                    // Handle timeout specifically
                     tracing::warn!("Request timed out - suspected bad url: {}", metadata_url);
-                    // TODO - should we use a special value like "timeout" here?
-                    return Ok(serde_json::Value::from("[]"));
+                    return Ok(FetchedMetadata::timeout());
                 }
-                Err(anyhow::Error::from(e))
+                Err(anyhow!(e.to_string()))
             }
         }
     }
