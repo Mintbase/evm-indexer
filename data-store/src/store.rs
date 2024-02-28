@@ -72,7 +72,7 @@ impl DataStore {
 
         conn.transaction::<_, diesel::result::Error, _>(|conn| {
             for (token, record) in updates {
-                let uid = record.clone().uid;
+                let uid = record.uid.clone();
 
                 let result = diesel::insert_into(nft_metadata::dsl::nft_metadata)
                     .values(record)
