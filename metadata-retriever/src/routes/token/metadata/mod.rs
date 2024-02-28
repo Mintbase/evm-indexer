@@ -7,6 +7,7 @@ use serde_json::Value;
 
 pub mod homebrew;
 mod util;
+mod ipfs;
 
 #[async_trait::async_trait]
 pub trait MetadataFetching: Send + Sync {
