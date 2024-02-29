@@ -152,7 +152,8 @@ mod tests {
         let urls = [
             // This one inconsistently returns untrusted and closed via error
             // "https://api.derp.life/token/0",
-            "https://assets.knoids.com/knoids/312",
+            // got: certificate has expired
+            // "https://assets.knoids.com/knoids/312",
             "https://evaverse.com/api/turtle.php?id=4171",
             "https://mint.joinalienverse.io/api/metadata/918",
             "https://metadata.hungrywolves.com/api/hungry-wolves/2531",
