@@ -136,6 +136,7 @@ mod tests {
 
     #[tokio::test]
     async fn url_request_certificate_errors() {
+        let client = get_fetcher();
         // Untrusted Certificate
         let urls = [
             // This one inconsistently returns untrusted and closed via error
