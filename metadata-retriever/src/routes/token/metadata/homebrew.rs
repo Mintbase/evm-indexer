@@ -88,7 +88,6 @@ impl MetadataFetching for Homebrew {
 #[cfg(test)]
 mod tests {
     use futures::future::join_all;
-    use std::collections::HashSet;
     use std::str::FromStr;
 
     use eth::types::{Address, U256};
