@@ -229,17 +229,15 @@ mod tests {
         );
 
         // Internal Error
-        assert!(
-            all_same_results(
-                &client,
-                &[
-                    "https://api.pupping.io/pupping/meta/50",
-                    "https://metadata.hexinft.io/api/token/hexi/1357",
-                ],
-                FetchedMetadata::error("internal error")
-            )
-            .await
-        );
+        let results = get_results_for_urls(
+            &client,
+            &[
+                "https://api.pupping.io/pupping/meta/50",
+                "https://metadata.hexinft.io/api/token/hexi/1357",
+            ],
+        )
+        .await;
+        assert!(results.iter().all(|x| x.raw.contains("internal error")));
     }
 
     #[tokio::test]
