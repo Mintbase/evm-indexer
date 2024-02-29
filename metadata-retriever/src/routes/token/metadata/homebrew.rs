@@ -208,21 +208,21 @@ mod tests {
             .raw
             .contains("tcp connect error: Connection refused (os error")));
 
-        // Connection Closed
-        assert!(
-            all_same_results(
-                &client,
-                &["https://niftyfootball.cards/api/network/1/token/1610",],
-                FetchedMetadata::error("connection closed via error")
-            )
-            .await
-        );
+        // Connection reset by peer
+        let results = get_results_for_urls(
+            &client,
+            &["https://niftyfootball.cards/api/network/1/token/1610"],
+        )
+        .await;
+        assert!(results
+            .iter()
+            .all(|x| x.raw.contains("Connection reset by peer")));
 
         // Unexpected EOF
         assert!(
             all_same_results(
                 &client,
-                &["https://niftyfootball.cards/api/network/1/token/1610",],
+                &["https://api.raid.party/metadata/fighter/16148",],
                 FetchedMetadata::error("unexpected EOF")
             )
             .await
