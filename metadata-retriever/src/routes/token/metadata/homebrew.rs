@@ -198,7 +198,9 @@ mod tests {
         let results = get_results_for_urls(&client, &urls).await;
         // os error 61 -- macOS
         // os error 111 -- Linux
-        assert!(results.iter().all(|x| x.raw.contains("tcp connect error: Connection refused (os error")));
+        assert!(results.iter().all(|x| x
+            .raw
+            .contains("tcp connect error: Connection refused (os error")));
 
         // Connection Closed
         let urls = [
