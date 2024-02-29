@@ -88,6 +88,7 @@ impl MetadataFetching for Homebrew {
 #[cfg(test)]
 mod tests {
     use futures::future::join_all;
+    use std::collections::HashSet;
     use std::str::FromStr;
 
     use eth::types::{Address, U256};
@@ -162,13 +163,15 @@ mod tests {
             "https://metadata.monsterapeclub.com/6680",
             "https://mint-penguinkart.com/29",
         ];
-        assert!(
-            all_same_results(
-                &client,
-                &urls,
-                FetchedMetadata::error("The certificate was not trusted.")
-            )
-            .await
+        let results = get_results_for_urls(&client, &urls).await;
+        // There are inconsistencies with this error locally and on github actions.
+        // This test ensures
+        // 1. certificate is contained in the message
+        assert!(results.iter().all(|x| x.raw.contains("certificate")));
+        // 2. All the messages are the same.
+        assert_eq!(
+            results.iter().map(|x| &x.raw).collect::<HashSet<_>>().len(),
+            1
         );
 
         // Protocol Error
