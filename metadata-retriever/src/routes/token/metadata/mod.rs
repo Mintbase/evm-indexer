@@ -41,9 +41,9 @@ impl FetchedMetadata {
         Ok(Self { raw: body, json })
     }
 
-    pub fn timeout() -> Self {
+    pub fn error(text: &str) -> Self {
         Self {
-            raw: "timeout".into(),
+            raw: text.into(),
             json: None,
         }
     }
