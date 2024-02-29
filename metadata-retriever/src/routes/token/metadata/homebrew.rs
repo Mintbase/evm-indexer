@@ -133,23 +133,9 @@ mod tests {
         }
         true
     }
+
     #[tokio::test]
-    #[ignore = "inconsistent responses"]
-    async fn url_request_error_trying_to_connect() {
-        let client = get_fetcher();
-
-        // DNS Error
-        let urls = [
-            "https://imgcdn.dragon-town.wtf/json/1402.json",
-            "https://misfits.lastknown.com/metadata/834.json",
-        ];
-        // There are several variants of DNS error:
-        // Examples:
-        //  - failed to lookup address information: nodename nor servname provided, or not known
-        //  - failed to lookup address information: Name or service not known
-        let results = get_results_for_urls(&client, &urls).await;
-        assert!(results.iter().all(|x| x.raw.contains("dns error:")));
-
+    async fn url_request_certificate_errors() {
         // Untrusted Certificate
         let urls = [
             // This one inconsistently returns untrusted and closed via error
@@ -173,6 +159,22 @@ mod tests {
         let error_set = results.iter().map(|x| &x.raw).collect::<HashSet<_>>();
         println!("Certificate Error Set: {:?}", error_set);
         assert_eq!(error_set.len(), 1);
+    }
+    #[tokio::test]
+    async fn url_request_error_trying_to_connect() {
+        let client = get_fetcher();
+
+        // DNS Error
+        let urls = [
+            "https://imgcdn.dragon-town.wtf/json/1402.json",
+            "https://misfits.lastknown.com/metadata/834.json",
+        ];
+        // There are several variants of DNS error:
+        // Examples:
+        //  - failed to lookup address information: nodename nor servname provided, or not known
+        //  - failed to lookup address information: Name or service not known
+        let results = get_results_for_urls(&client, &urls).await;
+        assert!(results.iter().all(|x| x.raw.contains("dns error:")));
 
         // Protocol Error
         let urls = ["https://metroverse.com/blocks/66"];
