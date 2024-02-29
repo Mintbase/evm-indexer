@@ -1,3 +1,5 @@
 **/*.env
 ./target
 Dockerfile
+kubernetes/
+metadata-retriever/test_data

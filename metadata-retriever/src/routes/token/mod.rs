@@ -3,7 +3,6 @@ use eth::types::NftId;
 use futures::stream::{self, StreamExt};
 pub mod metadata;
 use crate::{app::AppData, routes::RequestHandler};
-
 use async_trait;
 use data_store::models::NftMetadata;
 
@@ -37,6 +36,7 @@ impl RequestHandler<(NftId, Option<String>)> for AppData {
             .zip(possible_content)
             .filter_map(|(token, content)| content.map(|value| ((token.0), value.into())))
             .collect();
+
         self.store
             .lock()
             .expect("failed to lock mutex")
