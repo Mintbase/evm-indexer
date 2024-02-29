@@ -110,14 +110,18 @@ mod tests {
             .collect()
     }
 
+    async fn get_results_for_urls(client: &Homebrew, url_strings: &[&str]) -> Vec<FetchedMetadata> {
+        let urls: Vec<_> = url_strings.iter().map(|x| Url::parse(x).unwrap()).collect();
+        retrieve_and_resolve_request_errors(client, urls.clone()).await
+    }
+
     async fn all_same_results(
         client: &Homebrew,
-        url_strs: &[&str],
+        url_strings: &[&str],
         expected: FetchedMetadata,
     ) -> bool {
-        let urls: Vec<_> = url_strs.iter().map(|x| Url::parse(x).unwrap()).collect();
-        let results = retrieve_and_resolve_request_errors(client, urls.clone()).await;
-        for (url, result) in urls.iter().zip(results) {
+        let results = get_results_for_urls(client, url_strings).await;
+        for (url, result) in url_strings.iter().zip(results) {
             if result != expected {
                 println!(
                     "Unexpected Result for {} \n  expected: {}\n       got: {}",
@@ -137,8 +141,12 @@ mod tests {
             "https://imgcdn.dragon-town.wtf/json/1402.json",
             "https://misfits.lastknown.com/metadata/834.json",
         ];
-        let dns_string = "dns error: failed to lookup address information: nodename nor servname provided, or not known";
-        assert!(all_same_results(&client, &urls, FetchedMetadata::error(dns_string)).await);
+        // There are several variants of DNS error:
+        // Examples:
+        //  - failed to lookup address information: nodename nor servname provided, or not known
+        //  - failed to lookup address information: Name or service not known
+        let results = get_results_for_urls(&client, &urls).await;
+        assert!(results.iter().all(|x| x.raw.contains("dns error:")));
 
         // Untrusted Certificate
         let urls = [
