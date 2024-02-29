@@ -167,15 +167,18 @@ mod tests {
         let client = get_fetcher();
 
         // DNS Error
-        let urls = [
-            "https://imgcdn.dragon-town.wtf/json/1402.json",
-            "https://misfits.lastknown.com/metadata/834.json",
-        ];
         // There are several variants of DNS error:
         // Examples:
         //  - failed to lookup address information: nodename nor servname provided, or not known
         //  - failed to lookup address information: Name or service not known
-        let results = get_results_for_urls(&client, &urls).await;
+        let results = get_results_for_urls(
+            &client,
+            &[
+                "https://imgcdn.dragon-town.wtf/json/1402.json",
+                "https://misfits.lastknown.com/metadata/834.json",
+            ],
+        )
+        .await;
         assert!(results.iter().all(|x| x.raw.contains("dns error:")));
 
         // // Protocol Error
@@ -190,12 +193,15 @@ mod tests {
         // );
 
         // TCP Error
-        let urls = [
-            "https://mint.feev.mc/api/ipfs/metadata/platinum/125",
-            "https://kaijukongzdatabase.com/metadata/1404",
-            "https://xoxonft.io/meta/101/1",
-        ];
-        let results = get_results_for_urls(&client, &urls).await;
+        let results = get_results_for_urls(
+            &client,
+            &[
+                "https://mint.feev.mc/api/ipfs/metadata/platinum/125",
+                "https://kaijukongzdatabase.com/metadata/1404",
+                "https://xoxonft.io/meta/101/1",
+            ],
+        )
+        .await;
         // os error 61 -- macOS
         // os error 111 -- Linux
         assert!(results.iter().all(|x| x
@@ -203,25 +209,37 @@ mod tests {
             .contains("tcp connect error: Connection refused (os error")));
 
         // Connection Closed
-        let urls = [
-            "https://api.raid.party/metadata/fighter/16148",
-            "https://niftyfootball.cards/api/network/1/token/1610",
-        ];
         assert!(
             all_same_results(
                 &client,
-                &urls,
+                &["https://niftyfootball.cards/api/network/1/token/1610",],
                 FetchedMetadata::error("connection closed via error")
             )
             .await
         );
 
+        // Unexpected EOF
+        assert!(
+            all_same_results(
+                &client,
+                &["https://niftyfootball.cards/api/network/1/token/1610",],
+                FetchedMetadata::error("unexpected EOF")
+            )
+            .await
+        );
+
         // Internal Error
-        let urls = [
-            "https://api.pupping.io/pupping/meta/50",
-            "https://metadata.hexinft.io/api/token/hexi/1357",
-        ];
-        assert!(all_same_results(&client, &urls, FetchedMetadata::error("internal error")).await);
+        assert!(
+            all_same_results(
+                &client,
+                &[
+                    "https://api.pupping.io/pupping/meta/50",
+                    "https://metadata.hexinft.io/api/token/hexi/1357",
+                ],
+                FetchedMetadata::error("internal error")
+            )
+            .await
+        );
     }
 
     #[tokio::test]
@@ -233,43 +251,60 @@ mod tests {
         assert!(all_same_results(&client, &urls, FetchedMetadata::error("400 Bad Request")).await);
 
         // 402 Payment Required
-        let urls = [
-            "https://assets.nlbnft.com/api/metadata/82.json",
-            "https://partypenguins.club/api/penguin/208",
-            "https://ikani.ai/metadata/845",
-        ];
         assert!(
             all_same_results(
                 &client,
-                &urls,
+                &[
+                    "https://assets.nlbnft.com/api/metadata/82.json",
+                    "https://partypenguins.club/api/penguin/208",
+                    "https://ikani.ai/metadata/845",
+                ],
                 FetchedMetadata::error("402 Payment Required")
             )
             .await
         );
 
         // 403 Forbidden
-        let urls = [
-            "https://api.lasercat.co/metadata/221",
-            "https://bmcdata.s3.us-west-1.amazonaws.com/UltraMetadata/1324",
-            "https://dreamerapi.bitlectrolabs.com/dreamers/metadata/17",
-        ];
-        assert!(all_same_results(&client, &urls, FetchedMetadata::error("403 Forbidden")).await);
+        assert!(
+            all_same_results(
+                &client,
+                &[
+                    "https://api.lasercat.co/metadata/221",
+                    "https://bmcdata.s3.us-west-1.amazonaws.com/UltraMetadata/1324",
+                    "https://dreamerapi.bitlectrolabs.com/dreamers/metadata/17",
+                ],
+                FetchedMetadata::error("403 Forbidden")
+            )
+            .await
+        );
 
         // 404 Not Found
-        let urls = [
-            "https://airxnft.herokuapp.com/api/token/866",
-            "https://ipfs.io/ipfs/QmbDf9xpQwm6cN1pY1dsh6eKeq8HBnDzKD8Ym6XhFGiptv/0",
-            "https://skreamaz.herokuapp.com/api/2259",
-        ];
-        assert!(all_same_results(&client, &urls, FetchedMetadata::error("404 Not Found")).await);
+        assert!(
+            all_same_results(
+                &client,
+                &[
+                    "https://airxnft.herokuapp.com/api/token/866",
+                    "https://ipfs.io/ipfs/QmbDf9xpQwm6cN1pY1dsh6eKeq8HBnDzKD8Ym6XhFGiptv/0",
+                    "https://skreamaz.herokuapp.com/api/2259",
+                ],
+                FetchedMetadata::error("404 Not Found")
+            )
+            .await
+        );
 
         // 410 Gone
-        let urls = [
-            "https://ipfs.io/ipfs/QmSkzoReMj5ggmU69RaFZ6XHqPor1ZTtmTRVfZoYF9rfET/621",
-            "http://api.ramen.katanansamurai.art/Metadata/1495",
-            "https://ipfs.io/ipfs/QmeN7ZdrTGpbGoo8URqzvyiDtcgJxwoxULbQowaTGhTeZc/6712.json",
-        ];
-        assert!(all_same_results(&client, &urls, FetchedMetadata::error("410 Gone")).await);
+        assert!(
+            all_same_results(
+                &client,
+                &[
+                    "https://ipfs.io/ipfs/QmSkzoReMj5ggmU69RaFZ6XHqPor1ZTtmTRVfZoYF9rfET/621",
+                    "http://api.ramen.katanansamurai.art/Metadata/1495",
+                    "https://ipfs.io/ipfs/QmeN7ZdrTGpbGoo8URqzvyiDtcgJxwoxULbQowaTGhTeZc/6712.json",
+                ],
+                FetchedMetadata::error("410 Gone")
+            )
+            .await
+        );
     }
 
     #[tokio::test]
@@ -277,51 +312,48 @@ mod tests {
         let client = get_fetcher();
 
         // 500 Internal Server Error
-        let urls = [
-            "https://metadata.theavenue.market/v1/token/mrbean/769",
-            "https://us-central1-hangry-tools.cloudfunctions.net/editionMetadata?edition=4128",
-            "https://billionaires.io/api/billionaires/2298",
-            "https://ipfs.io/ipns/749.dogsunchainednft.com",
-            "https://beepos.fun/api/beepos/5671",
-            "https://us-central1-polymorphmetadata.cloudfunctions.net/images-function-v2?id=2050",
-            "https://lilmonkies.com/api/monkies/3956",
-        ];
         assert!(
             all_same_results(
                 &client,
-                &urls,
+                &[
+                    "https://metadata.theavenue.market/v1/token/mrbean/769",
+                    "https://us-central1-hangry-tools.cloudfunctions.net/editionMetadata?edition=4128",
+                    "https://billionaires.io/api/billionaires/2298",
+                    "https://ipfs.io/ipns/749.dogsunchainednft.com",
+                    "https://beepos.fun/api/beepos/5671",
+                    "https://us-central1-polymorphmetadata.cloudfunctions.net/images-function-v2?id=2050",
+                    "https://lilmonkies.com/api/monkies/3956",
+                ],
                 FetchedMetadata::error("500 Internal Server Error")
             )
             .await
         );
 
         // 502 Bad Gateway
-        let urls = [
+        assert!(all_same_results(&client, &[
             "https://meta.showme.fan/nft/meta/1/showme/2772",
             "https://app.ai42.art/api/loop/4743",
             "https://api.supducks.com/megatoads/metadata/174",
             "https://api.nonfungiblecdn.com/zenape/metadata/4413",
             "https://api3.cargo.build/batches/metadata/0xe573b99ffd4df2a82ea0986870c33af4cb8a5589/30",
             "https://photo-nft.rexit.info/json-file/332",
-        ];
-        assert!(all_same_results(&client, &urls, FetchedMetadata::error("502 Bad Gateway")).await);
+        ], FetchedMetadata::error("502 Bad Gateway")).await);
 
         // 503 Service Unavailable
-        let urls = [
-            "https://armory.warrioralliance.io/assets/347.json",
-            "https://minting-pipeline-10.herokuapp.com/3836",
-            "https://alphiewhales.herokuapp.com/tokens/632",
-            "https://minting-pipeline-beatport.herokuapp.com/2480",
-            "https://pss-silverback-go-nft-api.herokuapp.com/token/518",
-            "https://armory.warrioralliance.io/assets/Season%201/336.json",
-            "https://lit-island-00614.herokuapp.com/api/v1/uuvx/1157",
-            "https://fast-food-fren.herokuapp.com/spookyfrens/1010",
-            "https://lit-island-00614.herokuapp.com/api/v1/uuv2/chromosomes/1268",
-        ];
         assert!(
             all_same_results(
                 &client,
-                &urls,
+                &[
+                    "https://armory.warrioralliance.io/assets/347.json",
+                    "https://minting-pipeline-10.herokuapp.com/3836",
+                    "https://alphiewhales.herokuapp.com/tokens/632",
+                    "https://minting-pipeline-beatport.herokuapp.com/2480",
+                    "https://pss-silverback-go-nft-api.herokuapp.com/token/518",
+                    "https://armory.warrioralliance.io/assets/Season%201/336.json",
+                    "https://lit-island-00614.herokuapp.com/api/v1/uuvx/1157",
+                    "https://fast-food-fren.herokuapp.com/spookyfrens/1010",
+                    "https://lit-island-00614.herokuapp.com/api/v1/uuv2/chromosomes/1268",
+                ],
                 FetchedMetadata::error("503 Service Unavailable")
             )
             .await
@@ -332,39 +364,35 @@ mod tests {
     async fn url_request_unknown_errors() {
         let client = get_fetcher();
         // Unknown
-        let urls = [
-            "https://undead-town.xyz/api/metadata/698",
-            "https://metadata.pieceofshit.wtf/json/0.json",
-            "https://api.traitsniper.com/api/metadata/583.json",
-            "https://metadata.nftown.com/shares/385",
-        ];
         assert!(
             all_same_results(
                 &client,
-                &urls,
+                &[
+                    "https://undead-town.xyz/api/metadata/698",
+                    "https://metadata.pieceofshit.wtf/json/0.json",
+                    "https://api.traitsniper.com/api/metadata/583.json",
+                    "https://metadata.nftown.com/shares/385",
+                ],
                 FetchedMetadata::error("530 <unknown status code>")
             )
             .await
         );
-
-        let urls = [
-            "https://pandaparadise.xyz/api/token/2238.json",
-            "https://api.clayfriends.io/friend/121",
-        ];
         assert!(
             all_same_results(
                 &client,
-                &urls,
+                &[
+                    "https://pandaparadise.xyz/api/token/2238.json",
+                    "https://api.clayfriends.io/friend/121",
+                ],
                 FetchedMetadata::error("521 <unknown status code>")
             )
             .await
         );
 
-        let urls = ["https://api.mintverse.world/word/metadata/2215"];
         assert!(
             all_same_results(
                 &client,
-                &urls,
+                &["https://api.mintverse.world/word/metadata/2215",],
                 FetchedMetadata::error("526 <unknown status code>")
             )
             .await
