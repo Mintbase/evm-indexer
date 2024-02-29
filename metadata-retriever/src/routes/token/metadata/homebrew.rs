@@ -134,6 +134,7 @@ mod tests {
         true
     }
     #[tokio::test]
+    #[ignore = "inconsistent responses"]
     async fn url_request_error_trying_to_connect() {
         let client = get_fetcher();
 
@@ -169,10 +170,9 @@ mod tests {
         // 1. certificate is contained in the message
         assert!(results.iter().all(|x| x.raw.contains("certificate")));
         // 2. All the messages are the same.
-        assert_eq!(
-            results.iter().map(|x| &x.raw).collect::<HashSet<_>>().len(),
-            1
-        );
+        let error_set = results.iter().map(|x| &x.raw).collect::<HashSet<_>>();
+        println!("Certificate Error Set: {:?}", error_set);
+        assert_eq!(error_set.len(), 1);
 
         // Protocol Error
         let urls = ["https://metroverse.com/blocks/66"];
