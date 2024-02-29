@@ -195,14 +195,10 @@ mod tests {
             "https://kaijukongzdatabase.com/metadata/1404",
             "https://xoxonft.io/meta/101/1",
         ];
-        assert!(
-            all_same_results(
-                &client,
-                &urls,
-                FetchedMetadata::error("tcp connect error: Connection refused (os error 61)")
-            )
-            .await
-        );
+        let results = get_results_for_urls(&client, &urls).await;
+        // os error 61 -- macOS
+        // os error 111 -- Linux
+        assert!(results.iter().all(|x| x.raw.contains("tcp connect error: Connection refused (os error")));
 
         // Connection Closed
         let urls = [
