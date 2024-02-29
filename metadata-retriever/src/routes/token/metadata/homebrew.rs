@@ -109,6 +109,25 @@ mod tests {
             .map(|r| r.unwrap())
             .collect()
     }
+
+    async fn all_same_results(
+        client: &Homebrew,
+        url_strs: &[&str],
+        expected: FetchedMetadata,
+    ) -> bool {
+        let urls: Vec<_> = url_strs.iter().map(|x| Url::parse(x).unwrap()).collect();
+        let results = retrieve_and_resolve_request_errors(client, urls.clone()).await;
+        for (url, result) in urls.iter().zip(results) {
+            if result != expected {
+                println!(
+                    "Unexpected Result for {} \n  expected: {}\n       got: {}",
+                    url, expected.raw, result.raw
+                );
+                return false;
+            }
+        }
+        true
+    }
     #[tokio::test]
     async fn url_request_error_trying_to_connect() {
         let client = get_fetcher();
@@ -117,66 +136,78 @@ mod tests {
         let urls = [
             "https://imgcdn.dragon-town.wtf/json/1402.json",
             "https://misfits.lastknown.com/metadata/834.json",
-        ]
-        .map(|x| Url::parse(x).unwrap());
-        let results = retrieve_and_resolve_request_errors(&client, urls.to_vec()).await;
+        ];
         let dns_string = "dns error: failed to lookup address information: nodename nor servname provided, or not known";
-        assert!(results
-            .into_iter()
-            .all(|x| x == FetchedMetadata::error(dns_string)));
+        assert!(all_same_results(&client, &urls, FetchedMetadata::error(dns_string)).await);
 
         // Untrusted Certificate
         let urls = [
-            "https://api.derp.life/token/0",
+            // This one inconsistently returns untrusted and closed via error
+            // "https://api.derp.life/token/0",
             "https://assets.knoids.com/knoids/312",
-        ]
-        .map(|x| Url::parse(x).unwrap());
-        let results = retrieve_and_resolve_request_errors(&client, urls.to_vec()).await;
-        assert!(results
-            .into_iter()
-            .all(|x| x == FetchedMetadata::error("The certificate was not trusted.")));
+            "https://evaverse.com/api/turtle.php?id=4171",
+            "https://mint.joinalienverse.io/api/metadata/918",
+            "https://metadata.hungrywolves.com/api/hungry-wolves/2531",
+            "https://metadata.exclusible.com/christofle/332",
+            "https://royalsociety.io:1335/rsopchips/opensea/2314",
+            "https://metadata.monsterapeclub.com/6680",
+            "https://mint-penguinkart.com/29",
+        ];
+        assert!(
+            all_same_results(
+                &client,
+                &urls,
+                FetchedMetadata::error("The certificate was not trusted.")
+            )
+            .await
+        );
 
         // Protocol Error
-        let urls = ["https://metroverse.com/blocks/66"].map(|x| Url::parse(x).unwrap());
-        let results = retrieve_and_resolve_request_errors(&client, urls.to_vec()).await;
-        assert!(results
-            .into_iter()
-            .all(|x| x == FetchedMetadata::error("bad protocol version")));
+        let urls = ["https://metroverse.com/blocks/66"];
+        assert!(
+            all_same_results(
+                &client,
+                &urls,
+                FetchedMetadata::error("bad protocol version")
+            )
+            .await
+        );
 
         // TCP Error
         let urls = [
             "https://mint.feev.mc/api/ipfs/metadata/platinum/125",
             "https://kaijukongzdatabase.com/metadata/1404",
             "https://xoxonft.io/meta/101/1",
-        ]
-        .map(|x| Url::parse(x).unwrap());
-        let results = retrieve_and_resolve_request_errors(&client, urls.to_vec()).await;
-        assert!(results
-            .into_iter()
-            .all(|x| x
-                == FetchedMetadata::error("tcp connect error: Connection refused (os error 61)")));
+        ];
+        assert!(
+            all_same_results(
+                &client,
+                &urls,
+                FetchedMetadata::error("tcp connect error: Connection refused (os error 61)")
+            )
+            .await
+        );
 
         // Connection Closed
         let urls = [
             "https://api.raid.party/metadata/fighter/16148",
             "https://niftyfootball.cards/api/network/1/token/1610",
-        ]
-        .map(|x| Url::parse(x).unwrap());
-        let results = retrieve_and_resolve_request_errors(&client, urls.to_vec()).await;
-        assert!(results
-            .into_iter()
-            .all(|x| x == FetchedMetadata::error("connection closed via error")));
+        ];
+        assert!(
+            all_same_results(
+                &client,
+                &urls,
+                FetchedMetadata::error("connection closed via error")
+            )
+            .await
+        );
 
         // Internal Error
         let urls = [
             "https://api.pupping.io/pupping/meta/50",
             "https://metadata.hexinft.io/api/token/hexi/1357",
-        ]
-        .map(|x| Url::parse(x).unwrap());
-        let results = retrieve_and_resolve_request_errors(&client, urls.to_vec()).await;
-        assert!(results
-            .into_iter()
-            .all(|x| x == FetchedMetadata::error("internal error")));
+        ];
+        assert!(all_same_results(&client, &urls, FetchedMetadata::error("internal error")).await);
     }
 
     #[tokio::test]
@@ -184,60 +215,47 @@ mod tests {
         let client = get_fetcher();
 
         // 400 Bad Request
-        let urls =
-            ["https://www.metadoge.art/api/2D/metadata/4435"].map(|x| Url::parse(x).unwrap());
-        let results = retrieve_and_resolve_request_errors(&client, urls.to_vec()).await;
-        assert!(results
-            .into_iter()
-            .all(|x| x == FetchedMetadata::error("400 Bad Request")));
+        let urls = ["https://www.metadoge.art/api/2D/metadata/4435"];
+        assert!(all_same_results(&client, &urls, FetchedMetadata::error("400 Bad Request")).await);
 
         // 402 Payment Required
         let urls = [
             "https://assets.nlbnft.com/api/metadata/82.json",
             "https://partypenguins.club/api/penguin/208",
             "https://ikani.ai/metadata/845",
-        ]
-        .map(|x| Url::parse(x).unwrap());
-        let results = retrieve_and_resolve_request_errors(&client, urls.to_vec()).await;
-        assert!(results
-            .into_iter()
-            .all(|x| x == FetchedMetadata::error("402 Payment Required")));
+        ];
+        assert!(
+            all_same_results(
+                &client,
+                &urls,
+                FetchedMetadata::error("402 Payment Required")
+            )
+            .await
+        );
 
         // 403 Forbidden
         let urls = [
             "https://api.lasercat.co/metadata/221",
             "https://bmcdata.s3.us-west-1.amazonaws.com/UltraMetadata/1324",
             "https://dreamerapi.bitlectrolabs.com/dreamers/metadata/17",
-        ]
-        .map(|x| Url::parse(x).unwrap());
-        let results = retrieve_and_resolve_request_errors(&client, urls.to_vec()).await;
-        assert!(results
-            .into_iter()
-            .all(|x| x == FetchedMetadata::error("403 Forbidden")));
+        ];
+        assert!(all_same_results(&client, &urls, FetchedMetadata::error("403 Forbidden")).await);
 
         // 404 Not Found
         let urls = [
             "https://airxnft.herokuapp.com/api/token/866",
             "https://ipfs.io/ipfs/QmbDf9xpQwm6cN1pY1dsh6eKeq8HBnDzKD8Ym6XhFGiptv/0",
             "https://skreamaz.herokuapp.com/api/2259",
-        ]
-        .map(|x| Url::parse(x).unwrap());
-        let results = retrieve_and_resolve_request_errors(&client, urls.to_vec()).await;
-        assert!(results
-            .into_iter()
-            .all(|x| x == FetchedMetadata::error("404 Not Found")));
+        ];
+        assert!(all_same_results(&client, &urls, FetchedMetadata::error("404 Not Found")).await);
 
         // 410 Gone
         let urls = [
             "https://ipfs.io/ipfs/QmSkzoReMj5ggmU69RaFZ6XHqPor1ZTtmTRVfZoYF9rfET/621",
             "http://api.ramen.katanansamurai.art/Metadata/1495",
             "https://ipfs.io/ipfs/QmeN7ZdrTGpbGoo8URqzvyiDtcgJxwoxULbQowaTGhTeZc/6712.json",
-        ]
-        .map(|x| Url::parse(x).unwrap());
-        let results = retrieve_and_resolve_request_errors(&client, urls.to_vec()).await;
-        assert!(results
-            .into_iter()
-            .all(|x| x == FetchedMetadata::error("410 Gone")));
+        ];
+        assert!(all_same_results(&client, &urls, FetchedMetadata::error("410 Gone")).await);
     }
 
     #[tokio::test]
@@ -253,12 +271,15 @@ mod tests {
             "https://beepos.fun/api/beepos/5671",
             "https://us-central1-polymorphmetadata.cloudfunctions.net/images-function-v2?id=2050",
             "https://lilmonkies.com/api/monkies/3956",
-        ]
-        .map(|x| Url::parse(x).unwrap());
-        let results = retrieve_and_resolve_request_errors(&client, urls.to_vec()).await;
-        assert!(results
-            .into_iter()
-            .all(|x| x == FetchedMetadata::error("500 Internal Server Error")));
+        ];
+        assert!(
+            all_same_results(
+                &client,
+                &urls,
+                FetchedMetadata::error("500 Internal Server Error")
+            )
+            .await
+        );
 
         // 502 Bad Gateway
         let urls = [
@@ -268,11 +289,8 @@ mod tests {
             "https://api.nonfungiblecdn.com/zenape/metadata/4413",
             "https://api3.cargo.build/batches/metadata/0xe573b99ffd4df2a82ea0986870c33af4cb8a5589/30",
             "https://photo-nft.rexit.info/json-file/332",
-        ].map(|x| Url::parse(x).unwrap());
-        let results = retrieve_and_resolve_request_errors(&client, urls.to_vec()).await;
-        assert!(results
-            .into_iter()
-            .all(|x| x == FetchedMetadata::error("502 Bad Gateway")));
+        ];
+        assert!(all_same_results(&client, &urls, FetchedMetadata::error("502 Bad Gateway")).await);
 
         // 503 Service Unavailable
         let urls = [
@@ -285,12 +303,15 @@ mod tests {
             "https://lit-island-00614.herokuapp.com/api/v1/uuvx/1157",
             "https://fast-food-fren.herokuapp.com/spookyfrens/1010",
             "https://lit-island-00614.herokuapp.com/api/v1/uuv2/chromosomes/1268",
-        ]
-        .map(|x| Url::parse(x).unwrap());
-        let results = retrieve_and_resolve_request_errors(&client, urls.to_vec()).await;
-        assert!(results
-            .into_iter()
-            .all(|x| x == FetchedMetadata::error("503 Service Unavailable")));
+        ];
+        assert!(
+            all_same_results(
+                &client,
+                &urls,
+                FetchedMetadata::error("503 Service Unavailable")
+            )
+            .await
+        );
     }
 
     #[tokio::test]
@@ -302,29 +323,38 @@ mod tests {
             "https://metadata.pieceofshit.wtf/json/0.json",
             "https://api.traitsniper.com/api/metadata/583.json",
             "https://metadata.nftown.com/shares/385",
-        ]
-        .map(|x| Url::parse(x).unwrap());
-        let results = retrieve_and_resolve_request_errors(&client, urls.to_vec()).await;
-        assert!(results
-            .into_iter()
-            .all(|x| x == FetchedMetadata::error("530 <unknown status code>")));
+        ];
+        assert!(
+            all_same_results(
+                &client,
+                &urls,
+                FetchedMetadata::error("530 <unknown status code>")
+            )
+            .await
+        );
 
         let urls = [
             "https://pandaparadise.xyz/api/token/2238.json",
             "https://api.clayfriends.io/friend/121",
-        ]
-        .map(|x| Url::parse(x).unwrap());
-        let results = retrieve_and_resolve_request_errors(&client, urls.to_vec()).await;
-        assert!(results
-            .into_iter()
-            .all(|x| x == FetchedMetadata::error("521 <unknown status code>")));
+        ];
+        assert!(
+            all_same_results(
+                &client,
+                &urls,
+                FetchedMetadata::error("521 <unknown status code>")
+            )
+            .await
+        );
 
-        let urls =
-            ["https://api.mintverse.world/word/metadata/2215"].map(|x| Url::parse(x).unwrap());
-        let results = retrieve_and_resolve_request_errors(&client, urls.to_vec()).await;
-        assert!(results
-            .into_iter()
-            .all(|x| x == FetchedMetadata::error("526 <unknown status code>")));
+        let urls = ["https://api.mintverse.world/word/metadata/2215"];
+        assert!(
+            all_same_results(
+                &client,
+                &urls,
+                FetchedMetadata::error("526 <unknown status code>")
+            )
+            .await
+        );
     }
 
     #[tokio::test]
