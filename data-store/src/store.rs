@@ -748,7 +748,11 @@ mod tests {
         assert!(store.load_nft(&token_id).unwrap().metadata_id.is_none());
 
         let content = serde_json::json!("My JSON document!");
-        let metadata = NftMetadata::new("raw String", Some(content.clone()));
+        let metadata = NftMetadata {
+            uid: vec![0u8],
+            raw: Some("raw String".into()),
+            json: Some(content.clone()),
+        };
         store.insert_metadata_batch(&[(token_id, metadata.clone())]);
 
         let token = store.load_nft(&token_id).unwrap();

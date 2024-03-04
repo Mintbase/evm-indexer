@@ -2652,6 +2652,7 @@ dependencies = [
  "flate2",
  "futures",
  "google-cloud-pubsub",
+ "md5",
  "rand",
  "regex",
  "reqwest",

@@ -17,20 +17,25 @@ impl FromStr for FetchedMetadata {
         let mime = data_url.mime_type();
         match mime.type_.as_ref() {
             "application" if data_url.mime_type().subtype == "json" => Ok(Self {
-                raw,
+                hash: md5::compute(raw.as_bytes()).0.to_vec(),
+                raw: Some(raw),
                 json: Some(serde_json::from_slice::<Value>(&body)?),
             }),
             "text" | "image" => {
                 // Attempt to parse JSON anyway!
                 match serde_json::from_slice::<Value>(&body) {
                     Ok(value) => Ok(Self {
-                        raw,
+                        hash: md5::compute(raw.as_bytes()).0.to_vec(),
+                        raw: Some(raw),
                         json: Some(value),
                     }),
                     Err(e) => {
                         tracing::warn!("invalid encoding for {s}: {e}");
-                        // let text = String::from_utf8_lossy(&body).to_string();
-                        Ok(Self { raw, json: None })
+                        Ok(Self {
+                            hash: md5::compute(raw.as_bytes()).0.to_vec(),
+                            raw: Some(raw),
+                            json: None,
+                        })
                     }
                 }
             }
@@ -213,7 +218,8 @@ mod tests {
             FetchedMetadata {
                 //  data:text/plain;charset=utf-8,☳☰☶☴☲%0A☷☲☰☴☰%0A☱☶☰☴☰%0A☵☰☲☴☶%0A☲☳☴☴☵%0A
                 // ☳☰☶☴☲\n☷☲☰☴☰\n☱☶☰☴☰\n☵☰☲☴☶\n☲☳☴☴☵\n
-                raw: test_string,
+                hash: md5::compute(test_string.as_bytes()).0.to_vec(),
+                raw: Some(test_string),
                 json: None,
             }
         );

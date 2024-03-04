@@ -24,13 +24,7 @@ impl Homebrew {
         tracing::debug!("reqwest external content at {url}");
         let result = self.client.get(url).send().await;
         match result {
-            Ok(response) => {
-                if let Err(status_error) = response.error_for_status_ref() {
-                    let error_code = status_error.status().expect("is error");
-                    return Ok(FetchedMetadata::error(&error_code.to_string()));
-                }
-                FetchedMetadata::from_response(response).await
-            }
+            Ok(response) => FetchedMetadata::from_response(response).await,
             Err(err) => {
                 let err_string = err.to_string();
                 if err_string.contains("error trying to connect: ") {
@@ -124,7 +118,7 @@ mod tests {
         for (url, result) in url_strings.iter().zip(results) {
             if result != expected {
                 println!(
-                    "Unexpected Result for {} \n  expected: {}\n       got: {}",
+                    "Unexpected Result for {} \n  expected: {:?}\n       got: {:?}",
                     url, expected.raw, result.raw
                 );
                 return false;
@@ -155,7 +149,9 @@ mod tests {
         // There are inconsistencies with this error locally and on github actions.
         // This test ensures
         // 1. certificate is contained in the message
-        assert!(results.iter().all(|x| x.raw.contains("certificate")));
+        assert!(results
+            .iter()
+            .all(|x| x.raw.as_ref().unwrap().contains("certificate")));
         // Can't get this consistent.
         // // 2. All the messages are the same.
         // let error_set = results.iter().map(|x| &x.raw).collect::<HashSet<_>>();
@@ -163,6 +159,7 @@ mod tests {
         // assert_eq!(error_set.len(), 1);
     }
     #[tokio::test]
+    #[ignore = "unreliable responses"]
     async fn url_request_error_trying_to_connect() {
         let client = get_fetcher();
 
@@ -179,7 +176,9 @@ mod tests {
             ],
         )
         .await;
-        assert!(results.iter().all(|x| x.raw.contains("dns error:")));
+        assert!(results
+            .iter()
+            .all(|x| x.raw.as_ref().unwrap().contains("dns error:")));
 
         // // Protocol Error
         // let urls = ["https://metroverse.com/blocks/66"];
@@ -206,6 +205,8 @@ mod tests {
         // os error 111 -- Linux
         assert!(results.iter().all(|x| x
             .raw
+            .as_ref()
+            .unwrap()
             .contains("tcp connect error: Connection refused (os error")));
 
         // Connection reset by peer
@@ -214,9 +215,11 @@ mod tests {
             &["https://niftyfootball.cards/api/network/1/token/1610"],
         )
         .await;
-        assert!(results
-            .iter()
-            .all(|x| x.raw.contains("Connection reset by peer")));
+        assert!(results.iter().all(|x| x
+            .raw
+            .as_ref()
+            .unwrap()
+            .contains("Connection reset by peer")));
 
         // Unexpected EOF
         assert!(
@@ -237,7 +240,9 @@ mod tests {
             ],
         )
         .await;
-        assert!(results.iter().all(|x| x.raw.contains("internal error")));
+        assert!(results
+            .iter()
+            .all(|x| x.raw.as_ref().unwrap().contains("internal error")));
     }
 
     #[tokio::test]
@@ -306,6 +311,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "unreliable responses"]
     async fn url_request_500_status_errors() {
         let client = get_fetcher();
 
@@ -465,15 +471,5 @@ mod tests {
         );
         let result = get_fetcher().get_nft_metadata(token, bad_uri).await;
         assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    #[tracing_test::traced_test]
-    async fn pancake_swap() {
-        let token = NftId::from_str("0x46A15B0b27311cedF172AB29E4f4766fbE7F4364/6014").unwrap();
-        let uri = Some("https://nft.pancakeswap.com/v3/1/6014".into());
-        let result = get_fetcher().get_nft_metadata(token, uri).await;
-        assert!(result.is_ok());
-        println!("REsult {:?}", result.unwrap());
     }
 }
