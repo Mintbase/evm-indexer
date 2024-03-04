@@ -1,0 +1,1 @@
+ALTER TABLE nft_metadata ALTER COLUMN raw SET NOT NULL;
