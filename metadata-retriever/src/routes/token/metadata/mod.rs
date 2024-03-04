@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 use async_trait;
 use data_store::models::NftMetadata;
 use eth::types::NftId;
@@ -29,16 +29,33 @@ impl From<FetchedMetadata> for NftMetadata {
 
 impl FetchedMetadata {
     pub async fn from_response(response: Response) -> Result<Self> {
-        let body = response.text().await?;
-        let json = match serde_json::from_str::<Value>(&body) {
-            Ok(json) => Some(json),
-            Err(err) => {
-                // Log the error issue
-                tracing::warn!("Invalid JSON content: {} - using None", err);
-                None
-            }
-        };
-        Ok(Self { raw: body, json })
+        let content_type = response
+            .headers()
+            .get("Content-Type")
+            .context("header has no content type")?
+            .to_str()
+            .unwrap_or_default();
+        if content_type.starts_with("application/json") {
+            // Handle JSON
+            let body = response.text().await?;
+            Ok(Self {
+                raw: body.clone(),
+                json: serde_json::from_str::<Value>(&body).ok(),
+            })
+        } else if content_type.starts_with("image/") {
+            // TODO - Handle image: Save elsewhere and store ID.
+            // let _image = response.bytes().await?;
+            // tracing::info!("Got metadata with image content-type: {}", &content_type);
+            Ok(Self {
+                // Storing the url containing the image...
+                raw: response.url().to_string(),
+                json: None,
+            })
+        } else {
+            // Handle other content types or unexpected content
+            tracing::warn!("Unexpected content-type: {}", content_type);
+            Err(anyhow!("invalid content"))
+        }
     }
 
     pub fn error(text: &str) -> Self {

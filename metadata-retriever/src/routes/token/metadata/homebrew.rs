@@ -64,10 +64,10 @@ impl MetadataFetching for Homebrew {
         };
         tracing::debug!("parsed tokenUri as {:?}", uri_type);
         return match uri_type {
-            UriType::Url(metadata_url) => {
+            UriType::Url(url) => {
                 tracing::debug!("Url Type for {token}");
                 // If ERC1155 we (may) need to do a replacement on the url.
-                self.url_request(metadata_url).await
+                self.url_request(url).await
             }
             UriType::Ipfs(path) => {
                 tracing::debug!("IPFS Type for {token}");
@@ -465,5 +465,15 @@ mod tests {
         );
         let result = get_fetcher().get_nft_metadata(token, bad_uri).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    #[tracing_test::traced_test]
+    async fn pancake_swap() {
+        let token = NftId::from_str("0x46A15B0b27311cedF172AB29E4f4766fbE7F4364/6014").unwrap();
+        let uri = Some("https://nft.pancakeswap.com/v3/1/6014".into());
+        let result = get_fetcher().get_nft_metadata(token, uri).await;
+        assert!(result.is_ok());
+        println!("REsult {:?}", result.unwrap());
     }
 }
