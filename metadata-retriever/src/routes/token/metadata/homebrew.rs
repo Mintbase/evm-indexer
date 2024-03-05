@@ -70,10 +70,6 @@ impl MetadataFetching for Homebrew {
                 tracing::debug!("Data Type for {token}");
                 Ok(FetchedMetadata::from_str(&content)?)
             }
-            UriType::Unknown(mystery) => {
-                tracing::debug!("Unknown Type for {token}");
-                Err(anyhow!(mystery))
-            }
         };
     }
 }
@@ -91,6 +87,9 @@ mod tests {
         Homebrew::new(5).unwrap()
     }
 
+    async fn fetch(token: NftId, uri: Option<String>) -> Result<FetchedMetadata> {
+        get_fetcher().get_nft_metadata(token, uri).await
+    }
     async fn retrieve_and_resolve_request_errors(
         client: &Homebrew,
         urls: Vec<Url>,
@@ -103,7 +102,7 @@ mod tests {
             .collect()
     }
 
-    async fn get_results_for_urls(client: &Homebrew, url_strings: &[&str]) -> Vec<FetchedMetadata> {
+    async fn comget_results_for_urls(client: &Homebrew, url_strings: &[&str]) -> Vec<FetchedMetadata> {
         let urls: Vec<_> = url_strings.iter().map(|x| Url::parse(x).unwrap()).collect();
         retrieve_and_resolve_request_errors(client, urls.clone()).await
     }
@@ -406,12 +405,11 @@ mod tests {
     async fn ens_override() {
         let token_id =
             "31913142322058250240866303485500832898255309823098443696464130050119537886147";
-        let content_result = get_fetcher()
-            .get_nft_metadata(
-                NftId::from_str(&format!("{ENS_ADDRESS}/{token_id}")).unwrap(),
-                None,
-            )
-            .await;
+        let content_result = fetch(
+            NftId::from_str(&format!("{ENS_ADDRESS}/{token_id}")).unwrap(),
+            None,
+        )
+        .await;
         assert!(content_result.is_ok())
     }
 
@@ -426,7 +424,7 @@ mod tests {
             )
             .unwrap(),
         };
-        assert!(get_fetcher().get_nft_metadata(token, None).await.is_err())
+        assert!(fetch(token, None).await.is_err())
     }
 
     #[tokio::test]
@@ -435,27 +433,24 @@ mod tests {
             address: Address::from_str("0x659A4BDAAACC62D2BD9CB18225D9C89B5B697A5A").unwrap(),
             token_id: U256::from_dec_str("1200").unwrap(),
         };
-        let result = get_fetcher()
-            .get_nft_metadata(
-                token,
-                Some("https://fateofwagdie.com/api/characters/metadata/1200".into()),
-            )
-            .await;
+        let result = fetch(
+            token,
+            Some("https://fateofwagdie.com/api/characters/metadata/1200".into()),
+        )
+        .await;
         assert!(result.is_ok());
     }
 
     #[tokio::test]
     async fn get_metadata_ipfs() {
-        let content_result = get_fetcher()
-            .get_nft_metadata(
-                NftId {
-                    address: Address::from_str("0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d")
-                        .unwrap(),
-                    token_id: U256::from(2),
-                },
-                Some("ipfs://QmeSjSinHpPnmXmspMjwiXyN6zS4E9zccariGR3jxcaWtq/2".into()),
-            )
-            .await;
+        let content_result = fetch(
+            NftId {
+                address: Address::from_str("0xbc4ca0eda7647a8ab7c2061c2e118a18a936f13d").unwrap(),
+                token_id: U256::from(2),
+            },
+            Some("ipfs://QmeSjSinHpPnmXmspMjwiXyN6zS4E9zccariGR3jxcaWtq/2".into()),
+        )
+        .await;
         assert!(content_result.is_ok())
     }
 
@@ -468,7 +463,18 @@ mod tests {
             "https://5h5jydmla4qvcjvmdgcgnnkdhy0ddrod.lambda-url.us-east-2.on.aws/?id=2325&data="
                 .into(),
         );
-        let result = get_fetcher().get_nft_metadata(token, bad_uri).await;
+        let result = fetch(token, bad_uri).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    #[tracing_test::traced_test]
+    #[ignore = "passes locally but not on github actions: https://github.com/Mintbase/evm-indexer/issues/136"]
+    async fn should_work() {
+        let token = NftId::from_str("0x269641A320F8465EF4E710F51DC6E6862D7E8A77/11096").unwrap();
+        let uri = Some("ipfs://QmNtQhdTCnaT5KzpxFdxDajB3RrE4uHCCNLKpeJeVa52ky".into());
+        let result = fetch(token, uri).await;
+        println!("result {result:?}");
         assert!(result.is_ok());
     }
 }
