@@ -52,10 +52,11 @@ impl FetchedMetadata {
         if content_type.starts_with("application/json") {
             // Handle JSON
             let json = serde_json::from_slice::<Value>(&response_bytes).ok();
-            let mut raw = None;
-            if json.is_none() {
-                raw = Some(std::str::from_utf8(&response_bytes)?.to_string());
-            }
+            let raw = if json.is_none() {
+                Some(std::str::from_utf8(&response_bytes)?.to_string())
+            } else {
+                None
+            };
             Ok(Self { hash, raw, json })
         } else if content_type.starts_with("image/") {
             // TODO - Handle image: Save elsewhere and store ID.
@@ -78,7 +79,7 @@ impl FetchedMetadata {
 
     pub fn error(text: &str) -> Self {
         Self {
-            hash: md5::compute(text.as_bytes()).0.to_vec(),
+            hash: vec![0],
             raw: Some(text.into()),
             json: None,
         }

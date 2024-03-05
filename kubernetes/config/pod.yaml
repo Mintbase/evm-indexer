@@ -32,8 +32,8 @@ spec:
 
       containers:
       - name: {{ .ProjectName }}
-        image: {{ .ContainerRepo }}/mintbase/{{ .ProjectName }}:{{ .ImageTag }}
-        # image: {{ .ContainerRepo }}/test-binary:{{ .ImageTag }}
+#        image: {{ .ContainerRepo }}/mintbase/{{ .ProjectName }}:{{ .ImageTag }}
+        image: {{ .ContainerRepo }}/test-binary:{{ .ImageTag }}
         imagePullPolicy: Always
         args: ["event-handler"]
         env:

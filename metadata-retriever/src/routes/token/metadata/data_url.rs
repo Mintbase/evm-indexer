@@ -15,29 +15,20 @@ impl FromStr for FetchedMetadata {
         let (body, _fragment) = data_url.decode_to_vec()?;
 
         let mime = data_url.mime_type();
+        let hash = md5::compute(raw.as_bytes()).0.to_vec();
         match mime.type_.as_ref() {
             "application" if data_url.mime_type().subtype == "json" => Ok(Self {
-                hash: md5::compute(raw.as_bytes()).0.to_vec(),
+                hash,
                 raw: Some(raw),
                 json: Some(serde_json::from_slice::<Value>(&body)?),
             }),
             "text" | "image" => {
-                // Attempt to parse JSON anyway!
-                match serde_json::from_slice::<Value>(&body) {
-                    Ok(value) => Ok(Self {
-                        hash: md5::compute(raw.as_bytes()).0.to_vec(),
-                        raw: Some(raw),
-                        json: Some(value),
-                    }),
-                    Err(e) => {
-                        tracing::warn!("invalid encoding for {s}: {e}");
-                        Ok(Self {
-                            hash: md5::compute(raw.as_bytes()).0.to_vec(),
-                            raw: Some(raw),
-                            json: None,
-                        })
-                    }
-                }
+                // TODO -- don't store raw image here in DB!
+                Ok(Self {
+                    hash,
+                    raw: Some(raw),
+                    json: None,
+                })
             }
             _ => Err(DataUrlParseError::UnsupportedMimeType(
                 data_url.mime_type().to_string(),
@@ -218,7 +209,7 @@ mod tests {
             FetchedMetadata {
                 //  data:text/plain;charset=utf-8,☳☰☶☴☲%0A☷☲☰☴☰%0A☱☶☰☴☰%0A☵☰☲☴☶%0A☲☳☴☴☵%0A
                 // ☳☰☶☴☲\n☷☲☰☴☰\n☱☶☰☴☰\n☵☰☲☴☶\n☲☳☴☴☵\n
-                hash: md5::compute(test_string.as_bytes()).0.to_vec(),
+                hash: vec![62, 11, 204, 74, 87, 10, 98, 180, 84, 249, 230, 164, 216, 54, 255, 45],
                 raw: Some(test_string),
                 json: None,
             }
