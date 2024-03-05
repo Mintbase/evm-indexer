@@ -1,7 +1,7 @@
 use crate::routes::token::metadata::ipfs::IpfsPath;
 use crate::routes::token::metadata::util::TryFromStr;
 use crate::routes::token::metadata::FetchedMetadata;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use data_url::{forgiving_base64::InvalidBase64, DataUrl, DataUrlError};
 use serde_json::{Error as SerdeError, Value};
 use std::{error::Error, fmt, str::FromStr};
@@ -42,7 +42,6 @@ pub enum UriType {
     Url(Url),
     Ipfs(IpfsPath),
     Data(String),
-    Unknown(String),
 }
 
 impl FromStr for UriType {
@@ -60,13 +59,10 @@ impl FromStr for UriType {
                     tracing::debug!("Non base URL: using DataUrl");
                     return Ok(Self::Data(s.to_string()));
                 }
-                return Ok(Self::Url(url));
+                Ok(Self::Url(url))
             }
-            Err(err) => {
-                tracing::info!("failed to parse as url: {s} with error {err:?}");
-            }
+            Err(err) => Err(anyhow!("failed to parse as url: {s} with error {err:?}")),
         }
-        Ok(Self::Unknown(s.to_string()))
     }
 }
 #[derive(Debug)]

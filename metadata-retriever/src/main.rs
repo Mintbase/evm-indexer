@@ -14,7 +14,6 @@ use std::env;
 use crate::routes::RequestHandler;
 async fn pubsub_callback(data: web::Bytes, state: Data<AppData>) -> impl Responder {
     let json_data = serde_json::from_slice::<serde_json::Value>(&data);
-    tracing::info!("received single message with {:?} bytes", data.len());
     if let Ok(message) = serde_json::from_slice::<Message>(&data) {
         match message {
             Message::Contract { address } => state.process_request(&[address]).await,
@@ -29,7 +28,7 @@ async fn pubsub_callback(data: web::Bytes, state: Data<AppData>) -> impl Respond
             }
         }
     } else {
-        tracing::warn!("Received unrecognized message format {:?}", data);
+        tracing::warn!("unrecognized message format {:?}", data);
         HttpResponse::BadRequest().body(format!(
             "Received unrecognized message format {json_data:?}"
         ))
