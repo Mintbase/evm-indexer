@@ -60,8 +60,6 @@ impl FetchedMetadata {
             Ok(Self { hash, raw, json })
         } else if content_type.starts_with("image/") {
             // TODO - Handle image: Save elsewhere and store ID.
-            // let _image = response.bytes().await?;
-            tracing::info!("Got metadata with image content-type: {}", &content_type);
             let json_str = format!(r#"{{"image": "{}"}}"#, url);
             let json = serde_json::from_str(&json_str)?;
 
@@ -72,8 +70,7 @@ impl FetchedMetadata {
             })
         } else {
             // Handle other content types or unexpected content
-            tracing::warn!("Unexpected content-type: {}", content_type);
-            Err(anyhow!("invalid content"))
+            Err(anyhow!("Unexpected content-type {content_type} at {url}"))
         }
     }
 

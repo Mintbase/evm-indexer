@@ -21,7 +21,6 @@ impl Homebrew {
     }
 
     async fn url_request(&self, url: Url) -> Result<FetchedMetadata> {
-        tracing::debug!("reqwest external content at {url}");
         let result = self.client.get(url).send().await;
         match result {
             Ok(response) => FetchedMetadata::from_response(response).await,

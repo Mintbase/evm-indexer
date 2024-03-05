@@ -21,7 +21,7 @@ impl RequestHandler<(NftId, Option<String>)> for AppData {
                         Ok(metadata) => Some(metadata),
                         Err(err) => {
                             tracing::warn!(
-                                "metadata for {token:?} not found ({err:?}). Using None"
+                                "metadata for {token} not found ({err:?}). Using None"
                             );
                             None
                         }
