@@ -91,7 +91,7 @@ mod tests {
         get_fetcher().get_nft_metadata(token, uri).await
     }
     async fn retrieve_and_resolve_request_errors(
-        client: &Homebrew,
+        client: Homebrew,
         urls: Vec<Url>,
     ) -> Vec<FetchedMetadata> {
         let futures = urls.into_iter().map(|u| client.url_request(u));
@@ -102,17 +102,14 @@ mod tests {
             .collect()
     }
 
-    async fn get_results_for_urls(client: &Homebrew, url_strings: &[&str]) -> Vec<FetchedMetadata> {
+    async fn get_results_for_urls(url_strings: &[&str]) -> Vec<FetchedMetadata> {
+        let client = get_fetcher();
         let urls: Vec<_> = url_strings.iter().map(|x| Url::parse(x).unwrap()).collect();
         retrieve_and_resolve_request_errors(client, urls.clone()).await
     }
 
-    async fn all_same_results(
-        client: &Homebrew,
-        url_strings: &[&str],
-        expected: FetchedMetadata,
-    ) -> bool {
-        let results = get_results_for_urls(client, url_strings).await;
+    async fn all_same_results(url_strings: &[&str], expected: FetchedMetadata) -> bool {
+        let results = get_results_for_urls(url_strings).await;
         for (url, result) in url_strings.iter().zip(results) {
             if result != expected {
                 println!(
@@ -127,7 +124,6 @@ mod tests {
 
     #[tokio::test]
     async fn url_request_certificate_errors() {
-        let client = get_fetcher();
         // Untrusted Certificate
         let urls = [
             // This one inconsistently returns untrusted and closed via error
@@ -143,7 +139,7 @@ mod tests {
             "https://metadata.monsterapeclub.com/6680",
             "https://mint-penguinkart.com/29",
         ];
-        let results = get_results_for_urls(&client, &urls).await;
+        let results = get_results_for_urls(&urls).await;
         // There are inconsistencies with this error locally and on github actions.
         // This test ensures
         // 1. certificate is contained in the message
@@ -159,20 +155,15 @@ mod tests {
     #[tokio::test]
     #[ignore = "unreliable responses"]
     async fn url_request_error_trying_to_connect() {
-        let client = get_fetcher();
-
         // DNS Error
         // There are several variants of DNS error:
         // Examples:
         //  - failed to lookup address information: nodename nor servname provided, or not known
         //  - failed to lookup address information: Name or service not known
-        let results = get_results_for_urls(
-            &client,
-            &[
-                "https://imgcdn.dragon-town.wtf/json/1402.json",
-                "https://misfits.lastknown.com/metadata/834.json",
-            ],
-        )
+        let results = get_results_for_urls(&[
+            "https://imgcdn.dragon-town.wtf/json/1402.json",
+            "https://misfits.lastknown.com/metadata/834.json",
+        ])
         .await;
         assert!(results
             .iter()
@@ -190,14 +181,11 @@ mod tests {
         // );
 
         // TCP Error
-        let results = get_results_for_urls(
-            &client,
-            &[
-                "https://mint.feev.mc/api/ipfs/metadata/platinum/125",
-                "https://kaijukongzdatabase.com/metadata/1404",
-                "https://xoxonft.io/meta/101/1",
-            ],
-        )
+        let results = get_results_for_urls(&[
+            "https://mint.feev.mc/api/ipfs/metadata/platinum/125",
+            "https://kaijukongzdatabase.com/metadata/1404",
+            "https://xoxonft.io/meta/101/1",
+        ])
         .await;
         // os error 61 -- macOS
         // os error 111 -- Linux
@@ -208,11 +196,8 @@ mod tests {
             .contains("tcp connect error: Connection refused (os error")));
 
         // Connection reset by peer
-        let results = get_results_for_urls(
-            &client,
-            &["https://niftyfootball.cards/api/network/1/token/1610"],
-        )
-        .await;
+        let results =
+            get_results_for_urls(&["https://niftyfootball.cards/api/network/1/token/1610"]).await;
         assert!(results.iter().all(|x| x
             .raw
             .as_ref()
@@ -222,7 +207,6 @@ mod tests {
         // Unexpected EOF
         assert!(
             all_same_results(
-                &client,
                 &["https://api.raid.party/metadata/fighter/16148",],
                 FetchedMetadata::error("unexpected EOF")
             )
@@ -230,13 +214,10 @@ mod tests {
         );
 
         // Internal Error
-        let results = get_results_for_urls(
-            &client,
-            &[
-                "https://api.pupping.io/pupping/meta/50",
-                "https://metadata.hexinft.io/api/token/hexi/1357",
-            ],
-        )
+        let results = get_results_for_urls(&[
+            "https://api.pupping.io/pupping/meta/50",
+            "https://metadata.hexinft.io/api/token/hexi/1357",
+        ])
         .await;
         assert!(results
             .iter()
@@ -245,16 +226,13 @@ mod tests {
 
     #[tokio::test]
     async fn url_request_400_status_errors() {
-        let client = get_fetcher();
-
         // 400 Bad Request
         let urls = ["https://www.metadoge.art/api/2D/metadata/4435"];
-        assert!(all_same_results(&client, &urls, FetchedMetadata::error("400 Bad Request")).await);
+        assert!(all_same_results(&urls, FetchedMetadata::error("400 Bad Request")).await);
 
         // 402 Payment Required
         assert!(
             all_same_results(
-                &client,
                 &[
                     "https://assets.nlbnft.com/api/metadata/82.json",
                     "https://partypenguins.club/api/penguin/208",
@@ -268,7 +246,6 @@ mod tests {
         // 403 Forbidden
         assert!(
             all_same_results(
-                &client,
                 &[
                     "https://api.lasercat.co/metadata/221",
                     "https://bmcdata.s3.us-west-1.amazonaws.com/UltraMetadata/1324",
@@ -282,7 +259,6 @@ mod tests {
         // 404 Not Found
         assert!(
             all_same_results(
-                &client,
                 &[
                     "https://airxnft.herokuapp.com/api/token/866",
                     "https://ipfs.io/ipfs/QmbDf9xpQwm6cN1pY1dsh6eKeq8HBnDzKD8Ym6XhFGiptv/0",
@@ -296,7 +272,6 @@ mod tests {
         // 410 Gone
         assert!(
             all_same_results(
-                &client,
                 &[
                     "https://ipfs.io/ipfs/QmSkzoReMj5ggmU69RaFZ6XHqPor1ZTtmTRVfZoYF9rfET/621",
                     "http://api.ramen.katanansamurai.art/Metadata/1495",
@@ -311,12 +286,9 @@ mod tests {
     #[tokio::test]
     #[ignore = "unreliable responses"]
     async fn url_request_500_status_errors() {
-        let client = get_fetcher();
-
         // 500 Internal Server Error
         assert!(
             all_same_results(
-                &client,
                 &[
                     "https://metadata.theavenue.market/v1/token/mrbean/769",
                     "https://us-central1-hangry-tools.cloudfunctions.net/editionMetadata?edition=4128",
@@ -332,7 +304,7 @@ mod tests {
         );
 
         // 502 Bad Gateway
-        assert!(all_same_results(&client, &[
+        assert!(all_same_results(&[
             "https://meta.showme.fan/nft/meta/1/showme/2772",
             "https://app.ai42.art/api/loop/4743",
             "https://api.supducks.com/megatoads/metadata/174",
@@ -344,7 +316,6 @@ mod tests {
         // 503 Service Unavailable
         assert!(
             all_same_results(
-                &client,
                 &[
                     "https://armory.warrioralliance.io/assets/347.json",
                     "https://minting-pipeline-10.herokuapp.com/3836",
@@ -364,11 +335,9 @@ mod tests {
 
     #[tokio::test]
     async fn url_request_unknown_errors() {
-        let client = get_fetcher();
         // Unknown
         assert!(
             all_same_results(
-                &client,
                 &[
                     "https://undead-town.xyz/api/metadata/698",
                     "https://metadata.pieceofshit.wtf/json/0.json",
@@ -381,7 +350,6 @@ mod tests {
         );
         assert!(
             all_same_results(
-                &client,
                 &[
                     "https://pandaparadise.xyz/api/token/2238.json",
                     "https://api.clayfriends.io/friend/121",
@@ -393,7 +361,6 @@ mod tests {
 
         assert!(
             all_same_results(
-                &client,
                 &["https://api.mintverse.world/word/metadata/2215",],
                 FetchedMetadata::error("526 <unknown status code>")
             )
