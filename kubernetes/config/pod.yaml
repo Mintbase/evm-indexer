@@ -16,12 +16,13 @@ spec:
       initContainers:
         - name: migration
           image: {{ .ContainerRepo }}/mintbase/{{ .ProjectName }}-migration:{{ .ImageTag }}
+          imagePullPolicy: Always
           env:
             - name: STORE_URL
               valueFrom:
                 secretKeyRef:
                   name: indexer-secrets
-                  key: STORE_URL
+                  key: STORE_ADMIN
             - name: NETWORK
               value: {{ .Network }}
             - name: DB_HOST_PORT
@@ -33,7 +34,6 @@ spec:
       containers:
       - name: {{ .ProjectName }}
         image: {{ .ContainerRepo }}/mintbase/{{ .ProjectName }}:{{ .ImageTag }}
-        # image: {{ .ContainerRepo }}/test-binary:{{ .ImageTag }}
         imagePullPolicy: Always
         args: ["event-handler"]
         env:

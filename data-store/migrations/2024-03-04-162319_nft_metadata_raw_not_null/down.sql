@@ -14,4 +14,4 @@ where metadata_id IS NOT NULL
   AND metadata_id NOT IN (select uid from nft_metadata);
 
 ALTER TABLE nft_metadata
-    ALTER COLUMN raw DROP NOT NULL;
+    ALTER COLUMN raw SET NOT NULL;
