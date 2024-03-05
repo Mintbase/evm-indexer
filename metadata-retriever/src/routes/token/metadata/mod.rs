@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Context, Result};
 use async_trait;
 use data_store::models::NftMetadata;
 use eth::types::NftId;
@@ -17,33 +17,70 @@ pub trait MetadataFetching: Send + Sync {
 
 #[derive(Debug, PartialEq)]
 pub struct FetchedMetadata {
-    raw: String,
+    hash: Vec<u8>,
+    raw: Option<String>,
     json: Option<Value>,
 }
 
 impl From<FetchedMetadata> for NftMetadata {
     fn from(val: FetchedMetadata) -> Self {
-        NftMetadata::new(&val.raw, val.json)
+        NftMetadata {
+            uid: val.hash,
+            raw: val.raw,
+            json: val.json,
+        }
     }
 }
 
 impl FetchedMetadata {
     pub async fn from_response(response: Response) -> Result<Self> {
-        let body = response.text().await?;
-        let json = match serde_json::from_str::<Value>(&body) {
-            Ok(json) => Some(json),
-            Err(err) => {
-                // Log the error issue
-                tracing::warn!("Invalid JSON content: {} - using None", err);
+        // Handle Status errors first.
+        if let Err(status_error) = response.error_for_status_ref() {
+            let error_code = status_error.status().expect("is error");
+            return Ok(Self::error(&error_code.to_string()));
+        }
+        let headers = response.headers().clone();
+        let content_type = headers
+            .get("Content-Type")
+            .context("header has no content type")?
+            .to_str()
+            .unwrap_or_default();
+
+        let url = response.url().clone();
+        let response_bytes = response.bytes().await?;
+        let hash = md5::compute(&response_bytes).0.to_vec();
+        if content_type.starts_with("application/json") {
+            // Handle JSON
+            let json = serde_json::from_slice::<Value>(&response_bytes).ok();
+            let raw = if json.is_none() {
+                Some(std::str::from_utf8(&response_bytes)?.to_string())
+            } else {
                 None
-            }
-        };
-        Ok(Self { raw: body, json })
+            };
+            Ok(Self { hash, raw, json })
+        } else if content_type.starts_with("image/") {
+            // TODO - Handle image: Save elsewhere and store ID.
+            // let _image = response.bytes().await?;
+            tracing::info!("Got metadata with image content-type: {}", &content_type);
+            let json_str = format!(r#"{{"image": "{}"}}"#, url);
+            let json = serde_json::from_str(&json_str)?;
+
+            Ok(Self {
+                hash,
+                raw: None,
+                json,
+            })
+        } else {
+            // Handle other content types or unexpected content
+            tracing::warn!("Unexpected content-type: {}", content_type);
+            Err(anyhow!("invalid content"))
+        }
     }
 
     pub fn error(text: &str) -> Self {
         Self {
-            raw: text.into(),
+            hash: vec![0],
+            raw: Some(text.into()),
             json: None,
         }
     }
@@ -51,7 +88,7 @@ impl FetchedMetadata {
 
 #[cfg(test)]
 mod tests {
-    use crate::routes::token::metadata::{homebrew::Homebrew, MetadataFetching};
+    use crate::routes::token::metadata::{homebrew::Homebrew, FetchedMetadata, MetadataFetching};
     use csv::ReaderBuilder;
     use eth::{
         rpc::{ethers::Client, EthNodeReading},
@@ -61,6 +98,17 @@ mod tests {
     use rand::{seq::SliceRandom, thread_rng};
     use std::{fs::File, io::BufReader, path::Path, str::FromStr};
     use tracing_test::traced_test;
+
+    #[tokio::test]
+    #[tracing_test::traced_test]
+    async fn image_response() {
+        // let token = NftId::from_str("0x46A15B0b27311cedF172AB29E4f4766fbE7F4364/6014").unwrap();
+        let url = "https://nft.pancakeswap.com/v3/1/6014";
+        let response = reqwest::Client::new().get(url).send().await.unwrap();
+        let x = FetchedMetadata::from_response(response).await;
+        println!("{:?}", x.unwrap());
+        // assert!(result.is_ok());
+    }
 
     #[derive(serde::Deserialize, Clone)]
     struct InputCSV {
