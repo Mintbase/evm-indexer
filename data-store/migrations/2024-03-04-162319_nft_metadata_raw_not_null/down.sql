@@ -1,4 +1,17 @@
--- Note that this is not a complete reversal
--- If the services start populating the table with null valued `raw` data,
--- this operation can not be performed.
-ALTER TABLE nft_metadata ALTER COLUMN raw DROP NOT NULL;
+
+DELETE
+FROM nft_metadata
+WHERE raw IS NULL;
+
+UPDATE nfts
+SET metadata_id = NULL
+where metadata_id IS NOT NULL
+  AND metadata_id NOT IN (select uid from nft_metadata);
+
+UPDATE erc1155s
+SET metadata_id = NULL
+where metadata_id IS NOT NULL
+  AND metadata_id NOT IN (select uid from nft_metadata);
+
+ALTER TABLE nft_metadata
+    ALTER COLUMN raw DROP NOT NULL;
