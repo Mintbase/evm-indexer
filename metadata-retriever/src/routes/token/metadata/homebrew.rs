@@ -102,7 +102,7 @@ mod tests {
             .collect()
     }
 
-    async fn comget_results_for_urls(client: &Homebrew, url_strings: &[&str]) -> Vec<FetchedMetadata> {
+    async fn get_results_for_urls(client: &Homebrew, url_strings: &[&str]) -> Vec<FetchedMetadata> {
         let urls: Vec<_> = url_strings.iter().map(|x| Url::parse(x).unwrap()).collect();
         retrieve_and_resolve_request_errors(client, urls.clone()).await
     }
