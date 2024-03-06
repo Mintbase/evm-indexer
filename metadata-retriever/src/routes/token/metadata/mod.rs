@@ -76,7 +76,7 @@ impl FetchedMetadata {
 
     pub fn error(text: &str) -> Self {
         Self {
-            hash: vec![0],
+            hash: md5::compute(text.as_bytes()).0.to_vec(),
             raw: Some(text.into()),
             json: None,
         }
