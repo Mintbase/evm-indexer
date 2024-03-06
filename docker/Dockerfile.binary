@@ -1,4 +1,4 @@
-carFROM rust:bookworm as builder
+FROM rust:bookworm as builder
 
 WORKDIR /src/
 
