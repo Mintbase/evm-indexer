@@ -1,17 +1,17 @@
-FROM rust:bookworm as builder
+carFROM rust:bookworm as builder
 
 WORKDIR /src/
 
 # Copy & Build
 COPY . .
-RUN cargo build --release
+RUN cargo build
 
 # Extract Binary
 FROM docker.io/debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y ca-certificates tini libpq-dev
-COPY --from=builder /src/target/release/event-handler /usr/local/bin/event-handler
-COPY --from=builder /src/target/release/metadata-retriever /usr/local/bin/metadata-retriever
+COPY --from=builder /src/target/debug/event-handler /usr/local/bin/event-handler
+COPY --from=builder /src/target/debug/metadata-retriever /usr/local/bin/metadata-retriever
 
 CMD echo "Specify binary..."
 ENTRYPOINT ["/usr/bin/tini", "--"]
