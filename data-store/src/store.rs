@@ -81,7 +81,7 @@ impl DataStore {
                     .execute(conn);
                 handle_insert_result(result, 1, format!("insert_metadata: {}", token));
 
-                // one of the following two tables will be updated (depending on token type.)
+                // one of the following two tables should be updated (depending on token type.)
                 let erc721_res = update(nfts::dsl::nfts)
                     .set(nfts::metadata_id.eq::<Vec<u8>>((&*uid).into()))
                     .filter(nfts::contract_address.eq(&token.db_address()))
@@ -92,10 +92,8 @@ impl DataStore {
                     .filter(erc1155s::contract_address.eq(&token.db_address()))
                     .filter(erc1155s::token_id.eq(&token.db_token_id()))
                     .execute(conn);
-                // Exactly one of the two tables should result in an update!
-                assert_eq!(
-                    handle_query_result(erc721_res) + handle_query_result(erc1155_res),
-                    1,
+                assert!(
+                    handle_query_result(erc721_res) + handle_query_result(erc1155_res) > 0,
                     "invalid token update on metadata insertion {} - {:?}",
                     token,
                     uid

@@ -46,16 +46,10 @@ impl EtherscanApi {
     fn handle_response(
         ApiResponse {
             status,
-            message,
+            message: _,
             result,
         }: ApiResponse<Value>,
     ) -> Result<Option<Value>> {
-        tracing::debug!(
-            "Status {}, message: {:?}, result: {:?}",
-            status,
-            message,
-            result
-        );
         if status == "1" && result.is_some() {
             // The request was successful, return the result
             Ok(
