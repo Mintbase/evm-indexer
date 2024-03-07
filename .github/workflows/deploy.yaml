@@ -13,19 +13,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/login-action@v2
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Indexer Metadata
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         id: indexer
         with:
           images: ghcr.io/${{ github.repository }}
       - name: Indexer Image Build
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           context: .
           file: docker/Dockerfile.binary
@@ -34,12 +34,12 @@ jobs:
           labels: ${{ steps.indexer.outputs.labels }}
 
       - name: Migration Metadata
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         id: migration
         with:
           images: ghcr.io/${{ github.repository }}-migration
       - name: Migration Image Build
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           context: .
           file: docker/Dockerfile.migration
