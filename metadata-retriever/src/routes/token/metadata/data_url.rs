@@ -1,21 +1,27 @@
-use crate::routes::token::metadata::ipfs::IpfsPath;
-use crate::routes::token::metadata::util::TryFromStr;
-use crate::routes::token::metadata::FetchedMetadata;
+use crate::routes::token::metadata::{ipfs::IpfsPath, util::TryFromStr, FetchedMetadata};
 use anyhow::{anyhow, Result};
 use data_url::{forgiving_base64::InvalidBase64, DataUrl, DataUrlError};
 use serde_json::{Error as SerdeError, Value};
 use std::{error::Error, fmt, str::FromStr};
 use url::Url;
 
+fn sanitize_data_url(dirty_s: &str) -> String {
+    dirty_s
+        .replace(";utf8,", ";charset=utf8,")
+        .replace('#', "%23")
+}
+
 impl FromStr for FetchedMetadata {
     type Err = DataUrlParseError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let sanitized_s = sanitize_data_url(s);
         let raw = s.to_string();
-        let data_url = DataUrl::process(s)?;
+        let data_url = DataUrl::process(&sanitized_s)?;
         let (body, _fragment) = data_url.decode_to_vec()?;
 
         let mime = data_url.mime_type();
         let hash = md5::compute(raw.as_bytes()).0.to_vec();
+
         match mime.type_.as_ref() {
             "application" if data_url.mime_type().subtype == "json" => Ok(Self {
                 hash,
@@ -164,7 +170,7 @@ mod tests {
             // This only works because we attempt to parse json in text fields.
             load_test_data("valid_json_plain.txt"),
         ];
-        print_results(&uris);
+        // print_results(&uris);
         assert!(uris
             .map(|x| FetchedMetadata::from_str(x.as_str()))
             .iter()
@@ -221,7 +227,7 @@ mod tests {
             load_test_data("valid_svg_utf8_2.txt"),
             load_test_data("valid_svg_base64.txt"),
         ];
-        print_results(&svg_xml);
+        // print_results(&svg_xml);
         assert!(svg_xml
             .map(|x| FetchedMetadata::from_str(x.as_str()))
             .iter()
@@ -236,31 +242,14 @@ mod tests {
                 .json
                 .is_none()
         );
-        // see tiny_example test below
-        let problem_json = load_test_data("invalid_json_#.txt");
-        assert!(FetchedMetadata::from_str(&problem_json).is_err())
     }
 
     #[test]
     fn tiny_example() {
-        // https://github.com/servo/rust-url/issues/908
-        fn parse(data: &str) -> anyhow::Result<Value> {
-            let data_url = DataUrl::process(data)?;
-            let (body, fragment) = data_url.decode_to_vec()?;
-            if let Some(frag) = fragment {
-                println!("Fragment {}", frag.to_percent_encoded());
-            }
-            let data: Value = serde_json::from_slice(&body)?;
-            Ok(data)
-        }
-
         let data = r#"data:application/json;utf8,{"name":"Good number 1"}"#;
-        assert!(parse(data).is_ok());
-        let data = r#"data:application/json;utf8,{"name":"Bad #1"}"#;
-        assert_eq!(
-            parse(data).unwrap_err().to_string(),
-            "EOF while parsing a string at line 1 column 13"
-        );
+        assert!(FetchedMetadata::from_str(data).is_ok());
+        let data = r#"data:application/json;utf8,{"number":"number char #", "question_mark": "?"}"#;
+        assert!(FetchedMetadata::from_str(data).is_ok());
     }
 
     #[test]
@@ -283,8 +272,8 @@ mod tests {
                     assert_eq!(url.scheme(), "data");
                     assert!(url.cannot_be_a_base());
                     // rest of content is in path.
-                    let x: Vec<&str> = url.path().split(';').collect();
-                    println!("Path Left {}", x[0]);
+                    // let x: Vec<&str> = url.path().split(';').collect();
+                    // println!("Path Left {}", x[0]);
                 }
                 Err(err) => panic!("Error - {err:?}"),
             }
