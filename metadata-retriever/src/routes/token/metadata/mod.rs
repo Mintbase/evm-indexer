@@ -72,7 +72,7 @@ impl FetchedMetadata {
         let url = response.url().clone();
         let response_bytes = response.bytes().await?;
         let hash = md5::compute(&response_bytes).0.to_vec();
-        if is_try_json_type(&content_type) {
+        if is_try_json_type(content_type) {
             // Handle JSON
             let (raw, json) = try_parse_raw_and_json(response_bytes);
             Ok(Self { hash, raw, json })
