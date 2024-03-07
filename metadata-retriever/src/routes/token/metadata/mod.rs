@@ -90,7 +90,9 @@ impl FetchedMetadata {
             // Handle other content types or unexpected content
             let (raw, json) = try_parse_raw_and_json(response_bytes);
             if json.is_some() || raw.is_some() {
-                tracing::info!("found non-trivial data for content-type {content_type} at {url}");
+                tracing::warn!(
+                    "found non-trivial data for unrecognized content-type {content_type} at {url}"
+                );
                 return Ok(Self { hash, raw, json });
             }
             Err(anyhow!("un-parsable content-type {content_type} at {url}"))
