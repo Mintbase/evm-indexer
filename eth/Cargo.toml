@@ -6,23 +6,24 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.75"
-ethers = "2.0.10"
+anyhow = "1.0.80"
+ethers = "2.0.14"
+# Must remain fixed at 0.3.1
 bigdecimal = "0.3.1"
 rustc-hex = "2.1.0"
-diesel = { version = "2.1.1", features = ["postgres", "numeric", "chrono"] }
-futures = "0.3.29"
-tokio = { version = "1.33.0", features = ["macros"] }
-tracing = "0.1.37"
-async-trait = "0.1.74"
+diesel = { version = "2.1.4", features = ["postgres", "numeric", "chrono"] }
+futures = "0.3.30"
+tokio = { version = "1.36.0", features = ["macros"] }
+tracing = "0.1.40"
+async-trait = "0.1.77"
 # Waiting on https://github.com/nlordell/ethrpc-rs/pull/9
 # ethrpc = { version = "0.0.8", features = ["http"] }
 ethrpc = { git = "https://github.com/bh2smith/ethrpc-rs", rev = "04ba07064fcb9ac8cf71e02d2c168819499b3616", features = [
   "http",
 ] }
 solabi = "0.2.0"
-serde = { version = "1.0.193", features = ["derive"] }
-serde_json = "1.0.108"
+serde = { version = "1.0.197", features = ["derive"] }
+serde_json = "1.0.114"
 
 [dev-dependencies]
 maplit = "1.0.2"
