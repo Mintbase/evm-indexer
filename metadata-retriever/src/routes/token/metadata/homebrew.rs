@@ -444,4 +444,46 @@ mod tests {
         println!("result {result:?}");
         assert!(result.is_ok());
     }
+    #[tokio::test]
+    #[tracing_test::traced_test]
+    async fn alt_content_types() {
+        // application/octet-stream
+        assert!(fetch(
+            NftId::from_str("0x1AaBA8552D4e2fbFC99bC86F31f28788c7dc1218/1881").unwrap(),
+            Some("https://storage.googleapis.com/kokodinft/meta/1881".into()),
+        )
+        .await
+        .is_ok());
+
+        // binary/octet-stream
+        assert!(fetch(
+            NftId::from_str("0x2C88aA0956bC9813505d73575f653F69ADa60923/10308").unwrap(),
+            Some("https://wg-land.s3.us-west-2.amazonaws.com/10308".into()),
+        )
+        .await
+        .is_ok());
+
+        // text/plain
+        assert!(fetch(
+            NftId::from_str("0x0025C3ABfa72E7c509ad458b50982835404A1d6c/273").unwrap(),
+            Some("https://metadata.azurbala.com/azurRoot/json/273".into()),
+        )
+        .await
+        .is_ok());
+
+        // Application/json (with capital A)
+        assert!(fetch(
+            NftId::from_str("0xc71a726D390Bf02b4Af8920c0820970310D0F367/100460").unwrap(),
+            Some("https://mekaapes.s3.amazonaws.com/metadata/100460.json".into()),
+        )
+        .await
+        .is_ok());
+        // text/html
+        assert!(fetch(
+            NftId::from_str("0x907B5299756cA8DD27C62B621b0BC023420c6ffd/553").unwrap(),
+            Some("https://api.luckygoat.org/goat/553".into()),
+        )
+        .await
+        .is_ok());
+    }
 }
