@@ -1,3 +1,4 @@
+use actix_web::web::Bytes;
 use anyhow::{anyhow, Context, Result};
 use async_trait;
 use data_store::models::NftMetadata;
@@ -32,6 +33,28 @@ impl From<FetchedMetadata> for NftMetadata {
     }
 }
 
+fn is_try_json_type(type_str: &str) -> bool {
+    let try_json_types = [
+        "application/json",
+        "application/octet-stream",
+        "binary/octet-stream",
+        "text/plain",
+    ];
+    try_json_types
+        .iter()
+        .any(|t| type_str.to_lowercase().starts_with(t))
+}
+
+fn try_parse_raw_and_json(bytes: Bytes) -> (Option<String>, Option<Value>) {
+    let json = serde_json::from_slice::<Value>(&bytes).ok();
+    let raw = if json.is_none() {
+        std::str::from_utf8(&bytes).ok().map(|s| s.to_string())
+    } else {
+        None
+    };
+    (raw, json)
+}
+
 impl FetchedMetadata {
     pub async fn from_response(response: Response) -> Result<Self> {
         // Handle Status errors first.
@@ -49,14 +72,9 @@ impl FetchedMetadata {
         let url = response.url().clone();
         let response_bytes = response.bytes().await?;
         let hash = md5::compute(&response_bytes).0.to_vec();
-        if content_type.starts_with("application/json") {
+        if is_try_json_type(content_type) {
             // Handle JSON
-            let json = serde_json::from_slice::<Value>(&response_bytes).ok();
-            let raw = if json.is_none() {
-                Some(std::str::from_utf8(&response_bytes)?.to_string())
-            } else {
-                None
-            };
+            let (raw, json) = try_parse_raw_and_json(response_bytes);
             Ok(Self { hash, raw, json })
         } else if content_type.starts_with("image/") {
             // TODO - Handle image: Save elsewhere and store ID.
@@ -70,7 +88,14 @@ impl FetchedMetadata {
             })
         } else {
             // Handle other content types or unexpected content
-            Err(anyhow!("Unexpected content-type {content_type} at {url}"))
+            let (raw, json) = try_parse_raw_and_json(response_bytes);
+            if json.is_some() || raw.is_some() {
+                tracing::warn!(
+                    "found non-trivial data for unrecognized content-type {content_type} at {url}"
+                );
+                return Ok(Self { hash, raw, json });
+            }
+            Err(anyhow!("un-parsable content-type {content_type} at {url}"))
         }
     }
 

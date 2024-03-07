@@ -84,7 +84,7 @@ impl AbiFetching for EtherscanApi {
                 Ok(result) => return Ok(result),
                 Err(error) if retries < MAX_RETRIES => {
                     tracing::info!(
-                        "attempt {} failed with {:?} retrying in {backoff} ms",
+                        "attempt {} for {address} {:?} retrying in {backoff} ms",
                         retries + 1,
                         error
                     );

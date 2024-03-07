@@ -3,7 +3,7 @@ global:
   PodName: event-processor
   ContainerRepo: gcr.io/eth-cloud-mb
   ProjectName: evm-indexer
-  ImageTag: main
+  ImageTag: latest
   Network: mainnet
 
 include:
