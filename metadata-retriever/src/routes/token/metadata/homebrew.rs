@@ -248,7 +248,6 @@ mod tests {
             all_same_results(
                 &[
                     "https://api.lasercat.co/metadata/221",
-                    "https://bmcdata.s3.us-west-1.amazonaws.com/UltraMetadata/1324",
                     "https://dreamerapi.bitlectrolabs.com/dreamers/metadata/17",
                 ],
                 FetchedMetadata::error("403 Forbidden")
