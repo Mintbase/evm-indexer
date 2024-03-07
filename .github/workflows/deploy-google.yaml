@@ -28,13 +28,13 @@ jobs:
         run: gcloud auth configure-docker
 
       - name: Migration Metadata
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         id: migration
         with:
           images: gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ github.repository }}-migration
 
       - name: Build & Push Migration to GCH
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           context: .
           file: docker/Dockerfile.migration
@@ -43,13 +43,13 @@ jobs:
           labels: ${{ steps.migration.outputs.labels }}
 
       - name: Binary Metadata
-        uses: docker/metadata-action@v4
+        uses: docker/metadata-action@v5
         id: binary
         with:
           images: gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ github.repository }}
 
       - name: Build & Push Binary to GCH
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           context: .
           file: docker/Dockerfile.binary
