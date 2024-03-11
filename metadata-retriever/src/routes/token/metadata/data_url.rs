@@ -48,6 +48,7 @@ pub enum UriType {
     Url(Url),
     Ipfs(IpfsPath),
     Data(String),
+    // Arweave(String),
 }
 
 impl FromStr for UriType {
@@ -60,10 +61,18 @@ impl FromStr for UriType {
         }
         // This catches IPFS data too - but we've already checked for it.
         match Url::parse(s) {
-            Ok(url) => {
+            Ok(mut url) => {
                 if url.cannot_be_a_base() {
-                    tracing::debug!("Non base URL: using DataUrl");
                     return Ok(Self::Data(s.to_string()));
+                }
+                if url.scheme() == "ar" {
+                    // Could also, reset the scheme domain and path here:
+                    println!("url {}", url);
+                    url = Url::parse(&format!(
+                        "https://arweave.net/{}{}",
+                        url.domain().expect("arweave hash"),
+                        url.path()
+                    ))?;
                 }
                 Ok(Self::Url(url))
             }
@@ -241,6 +250,33 @@ mod tests {
                 .unwrap()
                 .json
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn arweave_handling() {
+        assert_eq!(
+            UriType::from_str("ar://wEBkrd6fpeOCnimnE0TxYPP8Z9hdiPkQe1RwQNgLszk").unwrap(),
+            UriType::Url(
+                Url::parse("https://arweave.net/wEBkrd6fpeOCnimnE0TxYPP8Z9hdiPkQe1RwQNgLszk")
+                    .unwrap()
+            )
+        );
+        assert_eq!(
+            UriType::from_str("ar://f1VFl6RQzco_hF1zsc_MvRYjW8b7B3PDdau0_YZPSZc/500").unwrap(),
+            UriType::Url(
+                Url::parse("https://arweave.net/f1VFl6RQzco_hF1zsc_MvRYjW8b7B3PDdau0_YZPSZc/500")
+                    .unwrap()
+            )
+        );
+        assert_eq!(
+            UriType::from_str("ar://f1VFl6RQzco_hF1zsc_MvRYjW8b7B3PDdau0_YZPSZc/500.json").unwrap(),
+            UriType::Url(
+                Url::parse(
+                    "https://arweave.net/f1VFl6RQzco_hF1zsc_MvRYjW8b7B3PDdau0_YZPSZc/500.json"
+                )
+                .unwrap()
+            )
         );
     }
 
