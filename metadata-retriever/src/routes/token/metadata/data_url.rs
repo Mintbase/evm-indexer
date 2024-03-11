@@ -48,7 +48,6 @@ pub enum UriType {
     Url(Url),
     Ipfs(IpfsPath),
     Data(String),
-    // Arweave(String),
 }
 
 impl FromStr for UriType {
@@ -67,7 +66,6 @@ impl FromStr for UriType {
                 }
                 if url.scheme() == "ar" {
                     // Could also, reset the scheme domain and path here:
-                    println!("url {}", url);
                     url = Url::parse(&format!(
                         "https://arweave.net/{}{}",
                         url.domain().expect("arweave hash"),
