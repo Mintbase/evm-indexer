@@ -350,7 +350,8 @@ mod tests {
         assert!(
             all_same_results(
                 &[
-                    "https://pandaparadise.xyz/api/token/2238.json",
+                    // This times out now.
+                    // "https://pandaparadise.xyz/api/token/2238.json",
                     "https://api.clayfriends.io/friend/121",
                 ],
                 FetchedMetadata::error("521 <unknown status code>")
