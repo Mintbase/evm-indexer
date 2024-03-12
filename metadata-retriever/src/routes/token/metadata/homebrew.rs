@@ -71,7 +71,7 @@ impl MetadataFetching for Homebrew {
                 Ok(FetchedMetadata::from_str(&content)?)
             }
             UriType::Json(value) => Ok(FetchedMetadata {
-                hash: md5::compute("json_doc".as_bytes()).to_vec(),
+                hash: md5::compute(value.to_string().as_bytes()).to_vec(),
                 raw: None,
                 json: Some(value),
             }),
