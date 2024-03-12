@@ -1,5 +1,5 @@
 use crate::routes::token::metadata::{ipfs::IpfsPath, util::TryFromStr, FetchedMetadata};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use data_url::{forgiving_base64::InvalidBase64, DataUrl, DataUrlError};
 use serde_json::{Error as SerdeError, Value};
 use std::{error::Error, fmt, str::FromStr};
@@ -48,6 +48,8 @@ pub enum UriType {
     Url(Url),
     Ipfs(IpfsPath),
     Data(String),
+    InvalidUrl(String),
+    Json(Value),
 }
 
 impl FromStr for UriType {
@@ -74,7 +76,13 @@ impl FromStr for UriType {
                 }
                 Ok(Self::Url(url))
             }
-            Err(err) => Err(anyhow!("failed to parse as url: {s} with error {err:?}")),
+            Err(err) => {
+                // Try to parse as JSON:
+                match serde_json::from_str::<Value>(s) {
+                    Ok(value) => Ok(Self::Json(value)),
+                    Err(_) => Ok(Self::InvalidUrl(err.to_string())),
+                }
+            }
         }
     }
 }
@@ -284,6 +292,24 @@ mod tests {
         assert!(FetchedMetadata::from_str(data).is_ok());
         let data = r#"data:application/json;utf8,{"number":"number char #", "question_mark": "?"}"#;
         assert!(FetchedMetadata::from_str(data).is_ok());
+    }
+
+    #[test]
+    fn json_uri() {
+        let data = r#"{"name": "WHO404 NFT#1","external_url":"https://who404.wtf/"}"#;
+
+        assert_eq!(
+            UriType::from_str(data).unwrap(),
+            UriType::Json(serde_json::from_str(data).unwrap())
+        );
+    }
+
+    #[test]
+    fn invalid_url() {
+        assert_eq!(
+            UriType::from_str("1234.json").unwrap(),
+            UriType::InvalidUrl("relative URL without a base".into())
+        );
     }
 
     #[test]

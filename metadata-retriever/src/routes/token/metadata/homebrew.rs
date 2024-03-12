@@ -70,6 +70,19 @@ impl MetadataFetching for Homebrew {
                 tracing::debug!("Data Type for {token}");
                 Ok(FetchedMetadata::from_str(&content)?)
             }
+            UriType::Json(value) => Ok(FetchedMetadata {
+                hash: md5::compute(value.to_string().as_bytes()).to_vec(),
+                raw: None,
+                json: Some(value),
+            }),
+            UriType::InvalidUrl(err) => {
+                let message = format!("invalid tokenUri ({}) do not retry", err);
+                Ok(FetchedMetadata {
+                    hash: md5::compute(message.as_bytes()).to_vec(),
+                    raw: Some(message),
+                    json: None,
+                })
+            }
         };
     }
 }
