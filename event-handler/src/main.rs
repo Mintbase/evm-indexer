@@ -36,5 +36,5 @@ async fn main() -> Result<()> {
 
     let start_from = handler.store.get_processed_block() + 1;
     tracing::info!("beginning event processor from {start_from}");
-    handler.run(start_from).await
+    handler.run(start_from, 180).await
 }
