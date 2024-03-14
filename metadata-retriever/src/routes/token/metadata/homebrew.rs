@@ -136,6 +136,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "unreliable responses - for local testing only"]
     async fn url_request_certificate_errors() {
         // Untrusted Certificate
         let urls = [
@@ -166,7 +167,7 @@ mod tests {
         // assert_eq!(error_set.len(), 1);
     }
     #[tokio::test]
-    #[ignore = "unreliable responses"]
+    #[ignore = "unreliable responses - for local testing only"]
     async fn url_request_error_trying_to_connect() {
         // DNS Error
         // There are several variants of DNS error:
@@ -296,7 +297,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "unreliable responses"]
+    #[ignore = "unreliable responses - for local testing only"]
     async fn url_request_500_status_errors() {
         // 500 Internal Server Error
         assert!(
