@@ -382,6 +382,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "ENS metadata domain is down: https://metadata.ens.domains"]
     async fn ens_override() {
         let token_id =
             "31913142322058250240866303485500832898255309823098443696464130050119537886147";
