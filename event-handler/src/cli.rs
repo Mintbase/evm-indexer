@@ -30,7 +30,7 @@ pub struct Args {
     pub chain_source: ChainDataSource,
 
     /// BlockRange width for run-loop processing.
-    #[clap(long, env, default_value = "1000")]
+    #[clap(long, env, default_value = "25")]
     pub page_size: i64,
 
     /// TokenUri retry blocks
@@ -48,4 +48,8 @@ pub struct Args {
     /// List of Token Contract addresses to avoid making tokenUri requests for.
     #[clap(long, env, use_value_delimiter = true)]
     pub token_avoid_list: Vec<Address>,
+
+    /// Wait time for new finalized blocks
+    #[clap(long, env, default_value = "180")]
+    pub arak_poll_frequency: u64,
 }

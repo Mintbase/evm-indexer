@@ -14,6 +14,7 @@ use event_retriever::db_reader::{
     diesel::{BlockRange, EventSource},
     models::*,
 };
+use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
 
 pub struct EventProcessor {
@@ -52,15 +53,27 @@ impl EventProcessor {
             metadata_client,
         })
     }
+    pub async fn run(&mut self, start_from: i64, wait_secs: u64) -> Result<()> {
+        let mut current_block = start_from;
+        loop {
+            current_block = self.run_inner(current_block).await?;
+            // Sleep for a bit and reenter the loop.
+            tracing::info!(
+                "Reached the last finalized block. Waiting for {} for more...",
+                wait_secs
+            );
+            tokio::time::sleep(Duration::from_secs(wait_secs)).await;
+        }
+    }
 
-    pub async fn run(&mut self, start_from: i64) -> Result<()> {
+    pub async fn run_inner(&mut self, start_from: i64) -> Result<i64> {
         let mut current_block = start_from;
         loop {
             // TODO - (after reorg handling) Replace with get_indexed_block (finalized is safe)
             //  https://github.com/Mintbase/evm-indexer/issues/104
             let max_block = self.source.get_finalized_block();
 
-            if current_block > max_block {
+            if current_block >= max_block {
                 // Exit when reached or exceeded the max_block
                 break;
             }
@@ -76,8 +89,7 @@ impl EventProcessor {
             // Update current_block for the next iteration
             current_block = block_range.end;
         }
-
-        Ok(())
+        Ok(current_block)
     }
 
     fn check_for_contract(&mut self, event: &EventBase) {
@@ -293,7 +305,7 @@ mod tests {
     async fn test_run() {
         let mut handler = test_processor().await;
         let start_from = std::cmp::max(handler.store.get_processed_block() + 1, 15_000_000);
-        let result = handler.run(start_from).await;
+        let result = handler.run(start_from, 5).await;
         assert!(result.is_ok());
     }
 }
