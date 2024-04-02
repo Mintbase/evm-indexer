@@ -9,7 +9,9 @@ use ethrpc::{
     types::*,
 };
 use futures::future::join_all;
+use futures::FutureExt;
 use solabi::{decode::Decode, encode::Encode, selector, FunctionEncoder};
+use std::future::Future;
 use std::time::Duration;
 use std::{collections::HashMap, fmt::Debug};
 
@@ -21,6 +23,43 @@ const TOKEN_URI: FunctionEncoder<(U256,), (String,)> =
     FunctionEncoder::new(selector!("tokenURI(uint256)"));
 pub struct Client {
     provider: ethrpc::http::Buffered,
+}
+
+/// Runs futures generated from an iterator of items,
+/// ensuring that the order of results matches the order of items.
+///
+/// `iter`: An iterator over items for which futures will be generated and executed.
+/// `f`: A closure that takes an item from the iterator and returns a future.
+///
+/// Returns a `Vec` of results, sorted by the original index to match the order of items.
+async fn run_futures_in_order<I, F, Fut, T, E>(iter: I, mut f: F) -> Vec<Result<T, E>>
+where
+    I: IntoIterator,
+    I::Item: Send,
+    F: FnMut(I::Item) -> Fut,
+    Fut: Future<Output = Result<T, E>> + Send,
+    T: Send,
+    E: Send,
+{
+    let futures: Vec<_> = iter
+        .into_iter()
+        .enumerate()
+        .map(|(index, item)| {
+            // Apply the function to each item to create a future and pair it with its index
+            let future = f(item).map(move |result| (index, result));
+            // Box the future to ensure it has a static size
+            future.boxed()
+        })
+        .collect();
+
+    // Wait for all futures to complete
+    let mut results: Vec<(usize, Result<T, E>)> = join_all(futures).await;
+
+    // Sort the results by index
+    results.sort_by_key(|(index, _)| *index);
+
+    // Map the sorted results to only include the result, in the correct order
+    results.into_iter().map(|(_, result)| result).collect()
 }
 
 fn handle_error(error: EthRpcError, context: &str) {
@@ -102,16 +141,15 @@ impl EthNodeReading for Client {
 
     async fn get_uris(&self, token_ids: &[NftId]) -> HashMap<NftId, Option<String>> {
         tracing::info!("preparing {} tokenUri requests", token_ids.len());
-        let futures = token_ids.iter().map(|token| {
+        let results = run_futures_in_order(token_ids, |token| {
             self.provider
                 .call(eth::Call, (Self::uri_call(token), BlockId::default()))
-        });
-
-        let uri_results = join_all(futures).await;
+        })
+        .await;
         tracing::debug!("completed tokenUri requests");
         token_ids
             .iter()
-            .zip(uri_results)
+            .zip(results)
             .map(|(&id, uri_result)| {
                 let uri = match uri_result {
                     Ok(bytes) => Self::decode_function_result_string(bytes, TOKEN_URI),
@@ -130,17 +168,18 @@ impl EthNodeReading for Client {
         addresses: &[Address],
     ) -> HashMap<Address, ContractDetails> {
         tracing::info!("preparing {} contract details requests", addresses.len());
-        let name_futures = addresses.iter().cloned().map(|addr| {
+        let names = run_futures_in_order(addresses, |addr| {
             self.provider
                 .call(eth::Call, (Self::name_call(addr), BlockId::default()))
-        });
+        })
+        .await;
 
-        let symbol_futures = addresses.iter().cloned().map(|addr| {
+        let symbols = run_futures_in_order(addresses, |addr| {
             self.provider
                 .call(eth::Call, (Self::symbol_call(addr), BlockId::default()))
-        });
+        })
+        .await;
 
-        let (names, symbols) = (join_all(name_futures).await, join_all(symbol_futures).await);
         tracing::debug!("complete {} contract details requests", addresses.len());
 
         addresses
@@ -179,6 +218,7 @@ impl Client {
         Ok(Self {
             provider: ethrpc::http::Client::new(Url::parse(url)?).buffered(Configuration {
                 delay: Duration::from_millis(batch_delay),
+                max_size: 2,
                 ..Default::default()
             }),
         })
@@ -199,7 +239,7 @@ impl Client {
         }
     }
 
-    fn name_call(address: Address) -> TransactionCall {
+    fn name_call(address: &Address) -> TransactionCall {
         TransactionCall {
             to: Some(address.0),
             input: Some(NAME.encode_params(&())),
@@ -207,7 +247,7 @@ impl Client {
         }
     }
 
-    fn symbol_call(address: Address) -> TransactionCall {
+    fn symbol_call(address: &Address) -> TransactionCall {
         TransactionCall {
             to: Some(address.0),
             input: Some(SYMBOL.encode_params(&())),
@@ -241,6 +281,7 @@ mod tests {
     use ethrpc::jsonrpc;
     use maplit::hashmap;
     use std::str::FromStr;
+    use tokio::time::{sleep, Duration};
 
     static FREE_ETH_RPC: &str = "https://rpc.ankr.com/eth";
 
@@ -360,5 +401,53 @@ mod tests {
         assert!(inner_error.message.contains("execution reverted"));
         let rpc_error = EthRpcError::Rpc(inner_error);
         handle_error(rpc_error, "test");
+    }
+
+    // Helper function for a mocked async operation
+    async fn async_operation(input: usize, delay_ms: u64) -> Result<String, ()> {
+        sleep(Duration::from_millis(delay_ms)).await;
+        Ok(format!("Result {}", input))
+    }
+
+    #[tokio::test]
+    async fn test_run_futures_in_order() {
+        let inputs = vec![2, 3, 1]; // Intentionally out of order
+        let delays = vec![300, 100, 200]; // Different delays to ensure tasks finish out of input order
+
+        let futures = inputs
+            .into_iter()
+            .zip(delays.into_iter())
+            .map(|(input, delay)| (input, async move { async_operation(input, delay).await }));
+
+        let results = run_futures_in_order(futures, |(_, future)| future).await;
+
+        let expected: Vec<Result<String, ()>> = vec![
+            Ok("Result 2".to_string()),
+            Ok("Result 3".to_string()),
+            Ok("Result 1".to_string()),
+        ];
+        assert_eq!(results, expected);
+    }
+
+    #[tokio::test]
+    async fn test_handles_errors() {
+        async fn async_op_may_fail(input: usize) -> Result<String, &'static str> {
+            if input % 2 == 0 {
+                Ok(format!("Even {}", input))
+            } else {
+                Err("Odd number error")
+            }
+        }
+
+        let inputs = vec![2, 4, 3]; // Includes a value that will cause an error
+
+        let results = run_futures_in_order(inputs, async_op_may_fail).await;
+
+        let expected = vec![
+            Ok("Even 2".to_string()),
+            Ok("Even 4".to_string()),
+            Err("Odd number error"),
+        ];
+        assert_eq!(results, expected);
     }
 }

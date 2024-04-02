@@ -174,7 +174,7 @@ mod tests {
         uris.iter()
             .map(|x| (x, FetchedMetadata::from_str(x)))
             .for_each(|(uri, data)| {
-                println!("URI: {uri}:\n  {data:?}");
+                println!("URI: {uri}:\n  {}", data.unwrap().json.unwrap());
             });
     }
     #[test]
