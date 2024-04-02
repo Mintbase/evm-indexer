@@ -126,8 +126,6 @@ impl EventProcessor {
             return;
         }
         tracing::debug!("retrieving missing node data");
-        // TODO - (after metadata-retrieving) this functionality will be replaced by metadata-retriever.
-        //  https://github.com/Mintbase/evm-indexer/issues/105
         let (mut missing_uris, mut contract_details) = self
             .eth_client
             .get_uris_and_contract_details(
@@ -272,7 +270,7 @@ mod tests {
             HandlerConfig {
                 chain_data_source: ChainDataSource::Database,
                 page_size: 100,
-                fetch_node_data: false,
+                fetch_node_data: true,
                 db_schema: "public".to_string(),
                 uri_retry_blocks: 100,
                 batch_delay: 1,
