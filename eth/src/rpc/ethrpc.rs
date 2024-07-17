@@ -353,6 +353,22 @@ mod tests {
             }
         );
     }
+    #[tokio::test]
+    async fn possible_spam() {
+        let eth_client = test_client();
+        let token_a = NftId {
+            address: Address::from_str("0x95CDB0FBF3CCADABBA38ACC921A9B2381329F727").unwrap(),
+            token_id: U256::from(558),
+        };
+        let token_b = NftId {
+            address: Address::from_str("0x95CDB0FBF3CCADABBA38ACC921A9B2381329F727").unwrap(),
+            token_id: U256::from(1728),
+        };
+
+        let uris = eth_client.get_uris(&[token_a, token_b]).await;
+        assert!(uris.get(&token_a).is_some());
+        assert!(uris.get(&token_b).is_some());
+    }
 
     #[test]
     fn error_handling() {
