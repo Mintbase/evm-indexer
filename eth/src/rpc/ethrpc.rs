@@ -114,7 +114,7 @@ impl EthNodeReading for Client {
             .zip(uri_results)
             .map(|(&id, uri_result)| {
                 let uri = match uri_result {
-                    Ok(bytes) => Self::decode_function_result_string(bytes, TOKEN_URI),
+                    Ok(bytes) => decode_function_result_string(bytes, TOKEN_URI),
                     Err(err) => {
                         handle_error(err, &format!("tokenUri for {id}"));
                         None
@@ -148,14 +148,14 @@ impl EthNodeReading for Client {
             .zip(names.into_iter().zip(symbols))
             .map(|(&address, (name_result, symbol_result))| {
                 let name = match name_result {
-                    Ok(name) => Self::decode_function_result_string(name, NAME),
+                    Ok(name) => decode_function_result_string(name, NAME),
                     Err(err) => {
                         handle_error(err, &format!("name for {address}"));
                         None
                     }
                 };
                 let symbol = match symbol_result {
-                    Ok(symbol) => Self::decode_function_result_string(symbol, SYMBOL),
+                    Ok(symbol) => decode_function_result_string(symbol, SYMBOL),
                     Err(err) => {
                         handle_error(err, &format!("symbol for {address}"));
                         None
@@ -214,23 +214,23 @@ impl Client {
             ..Default::default()
         }
     }
+}
 
-    fn decode_function_result_string<T>(
-        res: Vec<u8>,
-        encoder: FunctionEncoder<T, (String,)>,
-    ) -> Option<String>
-    where
-        T: Encode + Decode,
-    {
-        match encoder.decode_returns(&res) {
-            Ok(decoded_string) => Some(decoded_string.0.replace('\0', "")),
-            Err(err) => {
-                if !res.is_empty() {
-                    // Only log if result is non-empty
-                    tracing::warn!("failed to decode bytes {:?} with {}", res, err);
-                }
-                None
+fn decode_function_result_string<T>(
+    res: Vec<u8>,
+    encoder: FunctionEncoder<T, (String,)>,
+) -> Option<String>
+where
+    T: Encode + Decode,
+{
+    match encoder.decode_returns(&res) {
+        Ok(decoded_string) => Some(decoded_string.0.replace('\0', "")),
+        Err(err) => {
+            if !res.is_empty() {
+                // Only log if result is non-empty
+                tracing::warn!("failed to decode bytes {:?} with {}", res, err);
             }
+            None
         }
     }
 }
@@ -246,6 +246,30 @@ mod tests {
 
     fn test_client() -> Client {
         Client::new(FREE_ETH_RPC, 0).expect("Needed for test")
+    }
+
+    #[test]
+    #[tracing_test::traced_test]
+    fn decode_result_string() {
+        // This is an example failure to decode.
+        let result_bytes = [
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 108, 104, 116, 116, 112, 115, 58, 47, 47, 110, 102, 116, 46, 114, 105,
+            115, 107, 104, 97, 114, 98, 111, 114, 46, 99, 111, 109, 47, 55, 53, 49, 49, 56, 52, 57,
+            51, 52, 53, 51, 56, 49, 55, 54, 55, 56, 49, 54, 56, 57, 52, 51, 55, 56, 57, 51, 51, 49,
+            53, 54, 50, 52, 53, 49, 55, 52, 48, 55, 55, 53, 57, 48, 57, 54, 53, 54, 54, 47, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            145, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        let x = decode_function_result_string(result_bytes.to_vec(), TOKEN_URI);
+        assert!(x.is_some());
+        // Here is the actual decoded data with zero bytes removed.
+        // Notice how there is an extra space + l at the start.
+        assert_eq!(
+            x.unwrap(),
+            " lhttps://nft.riskharbor.com/751184934538176781689437893315624517407759096566/"
+        );
     }
 
     #[tokio::test]
